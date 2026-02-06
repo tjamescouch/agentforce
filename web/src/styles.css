@@ -217,10 +217,26 @@ body {
   padding: 12px 16px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-secondary);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .channel-title {
   font-weight: 500;
+}
+
+.server-toggle {
+  font-size: 11px;
+  color: var(--text-dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.server-toggle input {
+  cursor: pointer;
 }
 
 .messages {
@@ -479,6 +495,51 @@ body {
   font-size: 18px;
   font-weight: 600;
   margin-bottom: 8px;
+}
+
+.detail-nick.clickable {
+  cursor: pointer;
+}
+
+.detail-nick.clickable:hover {
+  text-decoration: underline;
+}
+
+.rename-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.rename-form input {
+  padding: 8px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 14px;
+  border-radius: 4px;
+  outline: none;
+}
+
+.rename-form input:focus {
+  border-color: var(--text-primary);
+}
+
+.rename-form button {
+  padding: 6px 12px;
+  background: var(--text-dim);
+  border: none;
+  color: var(--bg-primary);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.rename-form button:hover {
+  background: var(--text-primary);
 }
 
 .detail-id {

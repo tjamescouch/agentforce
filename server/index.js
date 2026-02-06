@@ -9,6 +9,25 @@ const { encodeBase64, decodeBase64 } = tweetnaclUtil;
 const AGENTCHAT_URL = process.env.AGENTCHAT_URL || 'wss://agentchat-server.fly.dev';
 const PORT = process.env.PORT || 3000;
 const IDENTITY_FILE = '.dashboard-identity.json';
+const AGENT_NAMES_FILE = 'agent-names.json';
+
+// Load custom agent name mappings
+let agentNameOverrides = {};
+function loadAgentNames() {
+  try {
+    if (existsSync(AGENT_NAMES_FILE)) {
+      agentNameOverrides = JSON.parse(readFileSync(AGENT_NAMES_FILE, 'utf-8'));
+      console.log(`Loaded ${Object.keys(agentNameOverrides).length} agent name overrides`);
+    }
+  } catch (e) {
+    console.error('Failed to load agent names:', e.message);
+  }
+}
+
+// Get display name for an agent (override or fallback)
+function getAgentName(id, serverName) {
+  return agentNameOverrides[id] || serverName || id;
+}
 
 // ============ Identity Management ============
 function loadOrCreateIdentity() {
@@ -46,6 +65,17 @@ const state = {
   dashboardAgent: null
 };
 
+// Global identity for signing
+let identity = null;
+
+// Sign a message with our identity
+function signMessage(content) {
+  if (!identity || !identity.secretKey) return null;
+  const messageBytes = new TextEncoder().encode(content);
+  const signature = nacl.sign.detached(messageBytes, identity.secretKey);
+  return encodeBase64(signature);
+}
+
 // Circular buffer for messages (in-memory, capped at 200 per channel)
 class CircularBuffer {
   constructor(size) {
@@ -75,17 +105,17 @@ function connectToAgentChat(identity) {
     state.dashboardAgent = { id: null, nick: identity.nick };
     reconnectDelay = 1000;
 
-    // Register with server
-    send({ type: 'register', nick: identity.nick, publicKey: encodeBase64(identity.publicKey) });
+    // Register with server (IDENTIFY message)
+    send({ type: 'IDENTIFY', name: identity.nick, pubkey: identity.pubkey || null });
 
     // Discover channels
-    send({ type: 'channels' });
+    send({ type: 'LIST_CHANNELS' });
 
     // Join #general
-    setTimeout(() => send({ type: 'join', channel: '#general' }), 500);
+    setTimeout(() => send({ type: 'JOIN', channel: '#general' }), 500);
 
-    // Request leaderboard
-    setTimeout(() => send({ type: 'leaderboard' }), 1000);
+    // Join additional channels
+    setTimeout(() => send({ type: 'JOIN', channel: '#owl-pack' }), 1000);
 
     broadcastToDashboards({ type: 'connected', data: { dashboardAgent: state.dashboardAgent } });
   });
@@ -126,106 +156,199 @@ function scheduleReconnect(identity) {
 }
 
 function handleAgentChatMessage(msg) {
+  // Log all messages for debugging
+  console.log('AgentChat:', msg.type, JSON.stringify(msg).slice(0, 150));
+
   switch (msg.type) {
-    case 'registered':
-      state.dashboardAgent.id = msg.agentId;
-      console.log(`Registered as ${msg.agentId}`);
+    case 'WELCOME':
+      state.dashboardAgent.id = msg.agent_id;
+      state.dashboardAgent.nick = msg.name || identity.nick;
+      console.log(`Registered as ${msg.agent_id}`);
       break;
 
-    case 'message':
+    case 'MSG':
       handleIncomingMessage(msg);
       break;
 
-    case 'channels':
-      msg.channels?.forEach(ch => {
+    case 'CHANNELS':
+      const channelList = msg.list || msg.channels || [];
+      channelList.forEach(ch => {
         if (!state.channels.has(ch.name)) {
           state.channels.set(ch.name, {
             name: ch.name,
-            members: new Set(ch.members || []),
+            members: new Set(),
+            agentCount: ch.agents || 0,
             messages: new CircularBuffer(200)
           });
+        } else {
+          state.channels.get(ch.name).agentCount = ch.agents || 0;
         }
       });
       broadcastToDashboards({ type: 'channel_update', data: getChannelsSnapshot() });
       break;
 
-    case 'presence':
-    case 'agentJoin':
-      const agent = {
-        id: msg.agentId || msg.from,
-        nick: msg.nick || msg.agentId,
+    case 'JOINED':
+      console.log(`Joined channel ${msg.channel}`);
+      if (!state.channels.has(msg.channel)) {
+        state.channels.set(msg.channel, {
+          name: msg.channel,
+          members: new Set(),
+          agentCount: 0,
+          messages: new CircularBuffer(200)
+        });
+      }
+      // Request agents in this channel
+      send({ type: 'LIST_AGENTS', channel: msg.channel });
+      break;
+
+    case 'AGENTS':
+      // Agents in a specific channel
+      const agentList = msg.list || msg.agents || [];
+      if (msg.channel && agentList.length > 0) {
+        agentList.forEach(a => {
+          const agent = {
+            id: a.id,
+            nick: getAgentName(a.id, a.name),
+            channels: new Set([msg.channel]),
+            lastSeen: Date.now(),
+            online: true,
+            presence: a.presence
+          };
+          if (state.agents.has(a.id)) {
+            state.agents.get(a.id).channels.add(msg.channel);
+          } else {
+            state.agents.set(a.id, agent);
+          }
+          if (state.channels.has(msg.channel)) {
+            state.channels.get(msg.channel).members.add(a.id);
+          }
+        });
+        broadcastToDashboards({ type: 'agents_update', data: [...state.agents.values()].map(a => ({ ...a, channels: [...a.channels] })) });
+      }
+      break;
+
+    case 'AGENT_JOINED':
+      const joiningAgentId = msg.agent || msg.agentId;
+      const joiningAgent = {
+        id: joiningAgentId,
+        nick: msg.name || joiningAgentId,
         channels: new Set([msg.channel].filter(Boolean)),
         lastSeen: Date.now(),
         online: true
       };
-      state.agents.set(agent.id, agent);
-      if (msg.channel && state.channels.has(msg.channel)) {
-        state.channels.get(msg.channel).members.add(agent.id);
+      if (state.agents.has(joiningAgentId)) {
+        state.agents.get(joiningAgentId).channels.add(msg.channel);
+        state.agents.get(joiningAgentId).online = true;
+        state.agents.get(joiningAgentId).lastSeen = Date.now();
+      } else {
+        state.agents.set(joiningAgentId, joiningAgent);
       }
-      broadcastToDashboards({ type: 'agent_update', data: { ...agent, channels: [...agent.channels], event: 'joined' } });
+      if (msg.channel && state.channels.has(msg.channel)) {
+        state.channels.get(msg.channel).members.add(joiningAgentId);
+      }
+      broadcastToDashboards({ type: 'agent_update', data: { ...joiningAgent, channels: [...joiningAgent.channels], event: 'joined' } });
       break;
 
-    case 'agentLeave':
-      const leaving = state.agents.get(msg.agentId);
+    case 'AGENT_LEFT':
+      const leavingAgentId = msg.agent || msg.agentId;
+      const leaving = state.agents.get(leavingAgentId);
       if (leaving) {
-        leaving.online = false;
         leaving.lastSeen = Date.now();
-        if (msg.channel && state.channels.has(msg.channel)) {
-          state.channels.get(msg.channel).members.delete(msg.agentId);
+        if (msg.channel) {
+          leaving.channels.delete(msg.channel);
+          if (leaving.channels.size === 0) {
+            leaving.online = false;
+          }
+          if (state.channels.has(msg.channel)) {
+            state.channels.get(msg.channel).members.delete(leavingAgentId);
+          }
         }
         broadcastToDashboards({ type: 'agent_update', data: { ...leaving, channels: [...leaving.channels], event: 'left' } });
       }
       break;
 
-    case 'leaderboard':
-      state.leaderboard = msg.data || [];
-      broadcastToDashboards({ type: 'leaderboard_update', data: state.leaderboard });
-      break;
-
-    case 'proposal':
+    case 'PROPOSAL':
       const proposal = {
-        id: msg.proposalId,
+        id: msg.proposal_id,
         from: msg.from,
         to: msg.to,
         task: msg.task,
         amount: msg.amount,
         currency: msg.currency,
         status: msg.status || 'pending',
-        eloStake: msg.eloStake,
-        createdAt: msg.createdAt || Date.now(),
+        eloStake: msg.elo_stake,
+        createdAt: msg.ts || Date.now(),
         updatedAt: Date.now()
       };
       state.proposals.set(proposal.id, proposal);
       broadcastToDashboards({ type: 'proposal_update', data: proposal });
       break;
 
-    case 'skills':
-      state.skills = msg.data || [];
+    case 'ACCEPT':
+    case 'REJECT':
+    case 'COMPLETE':
+    case 'DISPUTE':
+      if (msg.proposal_id && state.proposals.has(msg.proposal_id)) {
+        const p = state.proposals.get(msg.proposal_id);
+        p.status = msg.type.toLowerCase();
+        p.updatedAt = Date.now();
+        broadcastToDashboards({ type: 'proposal_update', data: p });
+      }
+      break;
+
+    case 'SEARCH_RESULTS':
+      state.skills = msg.results || [];
       broadcastToDashboards({ type: 'skills_update', data: state.skills });
+      break;
+
+    case 'ERROR':
+      console.error('AgentChat error:', msg.code, msg.message);
+      break;
+
+    case 'PONG':
+      // Heartbeat response
       break;
   }
 }
 
+// Track seen message IDs to prevent duplicates
+const seenMessageIds = new Set();
+
 function handleIncomingMessage(msg) {
-  const channel = msg.to || msg.channel;
+  const channel = msg.to;
   if (!channel) return;
+
+  // Create a unique key for deduplication
+  const msgKey = msg.id || `${msg.ts}-${msg.from}-${msg.content?.slice(0, 50)}`;
+  if (seenMessageIds.has(msgKey)) {
+    return; // Skip duplicate
+  }
+  seenMessageIds.add(msgKey);
+
+  // Clean up old keys periodically (keep last 1000)
+  if (seenMessageIds.size > 1000) {
+    const arr = [...seenMessageIds];
+    seenMessageIds.clear();
+    arr.slice(-500).forEach(k => seenMessageIds.add(k));
+  }
 
   if (!state.channels.has(channel)) {
     state.channels.set(channel, {
       name: channel,
       members: new Set(),
+      agentCount: 0,
       messages: new CircularBuffer(200)
     });
   }
 
   const message = {
-    id: msg.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    id: msgKey,
     from: msg.from,
-    fromNick: msg.nick || msg.from,
+    fromNick: getAgentName(msg.from, msg.name),
     to: channel,
-    content: msg.content || msg.message,
+    content: msg.content,
     ts: msg.ts || Date.now(),
-    isProposal: msg.isProposal || false
+    isProposal: false
   };
 
   state.channels.get(channel).messages.push(message);
@@ -236,12 +359,18 @@ function handleIncomingMessage(msg) {
 const dashboardClients = new Set();
 
 function broadcastToDashboards(msg) {
+  if (dashboardClients.size === 0) return;
   const data = JSON.stringify(msg);
+  let sent = 0;
   dashboardClients.forEach(client => {
     if (client.ws.readyState === WebSocket.OPEN) {
       client.ws.send(data);
+      sent++;
     }
   });
+  if (msg.type === 'message') {
+    console.log(`Broadcast ${msg.type} to ${sent}/${dashboardClients.size} clients`);
+  }
 }
 
 function getStateSnapshot() {
@@ -277,7 +406,13 @@ function handleDashboardMessage(client, msg) {
         client.ws.send(JSON.stringify({ type: 'error', data: { code: 'LURK_MODE', message: 'Cannot send in lurk mode' } }));
         return;
       }
-      send({ type: 'send', to: msg.data.to, content: msg.data.content });
+      if (!agentChatWs || agentChatWs.readyState !== WebSocket.OPEN) {
+        client.ws.send(JSON.stringify({ type: 'error', data: { code: 'NOT_CONNECTED', message: 'Not connected to AgentChat server' } }));
+        return;
+      }
+      const content = msg.data.content;
+      const sig = signMessage(content);
+      send({ type: 'MSG', to: msg.data.to, content, sig });
       client.ws.send(JSON.stringify({ type: 'message_sent', data: { success: true } }));
       break;
 
@@ -295,15 +430,15 @@ function handleDashboardMessage(client, msg) {
         client.ws.send(JSON.stringify({ type: 'error', data: { code: 'LURK_MODE', message: 'Cannot join in lurk mode' } }));
         return;
       }
-      send({ type: 'join', channel: msg.data.channel });
+      send({ type: 'JOIN', channel: msg.data.channel });
       break;
 
-    case 'refresh_leaderboard':
-      send({ type: 'leaderboard' });
+    case 'refresh_channels':
+      send({ type: 'LIST_CHANNELS' });
       break;
 
     case 'search_skills':
-      send({ type: 'searchSkills', ...msg.data });
+      send({ type: 'SEARCH_SKILLS', query: msg.data || {} });
       break;
 
     case 'accept_proposal':
@@ -311,8 +446,39 @@ function handleDashboardMessage(client, msg) {
         client.ws.send(JSON.stringify({ type: 'error', data: { code: 'LURK_MODE', message: 'Cannot accept in lurk mode' } }));
         return;
       }
-      send({ type: 'accept', proposalId: msg.data.proposalId });
-      client.ws.send(JSON.stringify({ type: 'proposal_accepted', data: { success: true, proposalId: msg.data.proposalId } }));
+      // Note: Would need signing for real accept
+      client.ws.send(JSON.stringify({ type: 'error', data: { code: 'NOT_IMPLEMENTED', message: 'Proposal actions require signing' } }));
+      break;
+
+    case 'set_agent_name':
+      const { agentId, name } = msg.data;
+      if (agentId && name) {
+        // Update in-memory mapping
+        agentNameOverrides[agentId] = name;
+
+        // Save to file
+        try {
+          writeFileSync(AGENT_NAMES_FILE, JSON.stringify(agentNameOverrides, null, 2));
+        } catch (e) {
+          console.error('Failed to save agent names:', e.message);
+        }
+
+        // Update agent in state
+        if (state.agents.has(agentId)) {
+          state.agents.get(agentId).nick = name;
+        }
+
+        // Broadcast update to all clients
+        broadcastToDashboards({
+          type: 'agent_update',
+          data: state.agents.has(agentId)
+            ? { ...state.agents.get(agentId), channels: [...state.agents.get(agentId).channels], event: 'renamed' }
+            : { id: agentId, nick: name, event: 'renamed' }
+        });
+
+        client.ws.send(JSON.stringify({ type: 'name_set', data: { agentId, name, success: true } }));
+        console.log(`Agent ${agentId} renamed to "${name}"`);
+      }
       break;
   }
 }
@@ -334,6 +500,11 @@ app.get('/api/health', (req, res) => {
 
 // Static files (for built React app)
 app.use(express.static('public'));
+
+// SPA fallback - serve index.html for all non-API routes
+app.get('*', (req, res) => {
+  res.sendFile('index.html', { root: 'public' });
+});
 
 // Dashboard WebSocket
 const wss = new WebSocketServer({ server, path: '/ws' });
@@ -391,7 +562,8 @@ setInterval(() => {
 }, 30000);
 
 // ============ Startup ============
-const identity = loadOrCreateIdentity();
+loadAgentNames();
+identity = loadOrCreateIdentity();
 connectToAgentChat(identity);
 
 server.listen(PORT, () => {
