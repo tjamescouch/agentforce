@@ -32,3 +32,8 @@ build/
 # Logs
 *.log
 logs/
+*.identity.json
+.dashboard-identity.json
+.env*
+*.pem
+*.key
