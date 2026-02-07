@@ -505,8 +505,12 @@ function broadcastToDashboards(msg: { type: string; data?: unknown }): void {
   let sent = 0;
   dashboardClients.forEach(client => {
     if (client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(data);
-      sent++;
+      try {
+        client.ws.send(data);
+        sent++;
+      } catch (err) {
+        console.error(`Failed to send to dashboard client: ${(err as Error).message}`);
+      }
     }
   });
   if (msg.type === 'message') {
