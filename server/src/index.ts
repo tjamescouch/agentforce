@@ -242,8 +242,10 @@ function connectToAgentChat(id: Identity): void {
 
     send({ type: 'IDENTIFY', name: id.nick, pubkey: id.pubkey || null });
     send({ type: 'LIST_CHANNELS' });
+    // Join default channels; additional channels auto-joined on CHANNELS response
     setTimeout(() => send({ type: 'JOIN', channel: '#general' }), 500);
-    setTimeout(() => send({ type: 'JOIN', channel: '#owl-pack' }), 1000);
+    setTimeout(() => send({ type: 'JOIN', channel: '#agents' }), 700);
+    setTimeout(() => send({ type: 'JOIN', channel: '#discovery' }), 900);
 
     broadcastToDashboards({
       type: 'connected',
@@ -303,13 +305,16 @@ function handleAgentChatMessage(msg: AgentChatMsg): void {
     case 'CHANNELS': {
       const channelList = msg.list || msg.channels || [];
       channelList.forEach(ch => {
-        if (!state.channels.has(ch.name)) {
+        const isNew = !state.channels.has(ch.name);
+        if (isNew) {
           state.channels.set(ch.name, {
             name: ch.name,
             members: new Set(),
             agentCount: ch.agents || 0,
             messages: new CircularBuffer(200)
           });
+          // Auto-join newly discovered public channels
+          send({ type: 'JOIN', channel: ch.name });
         } else {
           state.channels.get(ch.name)!.agentCount = ch.agents || 0;
         }
