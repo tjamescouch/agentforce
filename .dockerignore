@@ -1,0 +1,17 @@
+node_modules/
+server/node_modules/
+web/node_modules/
+.git/
+.env
+.env.*
+*.pem
+*.key
+*-identity.json
+*.identity.json
+.dashboard-identity.json
+.agentchat/
+.claude/
+.DS_Store
+*.log
+server/public/
+server/dist/
