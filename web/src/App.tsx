@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useReducer, createContext, FormEvent } from 'react';
+import { useState, useEffect, useRef, useReducer, useCallback, createContext, FormEvent } from 'react';
 
 // ============ Types ============
 
@@ -418,6 +418,44 @@ function useWebSocket(dispatch: React.Dispatch<DashboardAction>): WsSendFn {
   return send;
 }
 
+// ============ Resize Hook ============
+
+function useResizable(initialWidth: number, min: number, max: number, side: 'left' | 'right') {
+  const [width, setWidth] = useState(initialWidth);
+  const isResizing = useRef(false);
+  const handleRef = useRef<HTMLDivElement>(null);
+
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizing.current = true;
+    handleRef.current?.classList.add('active');
+    const startX = e.clientX;
+    const startWidth = width;
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isResizing.current) return;
+      const delta = side === 'left' ? e.clientX - startX : startX - e.clientX;
+      setWidth(Math.min(max, Math.max(min, startWidth + delta)));
+    };
+
+    const onMouseUp = () => {
+      isResizing.current = false;
+      handleRef.current?.classList.remove('active');
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }, [width, min, max, side]);
+
+  return { width, handleRef, onMouseDown };
+}
+
 // ============ Components ============
 
 function TopBar({ state, send }: { state: DashboardState; send: WsSendFn }) {
@@ -444,7 +482,7 @@ function TopBar({ state, send }: { state: DashboardState; send: WsSendFn }) {
   );
 }
 
-function Sidebar({ state, dispatch }: { state: DashboardState; dispatch: React.Dispatch<DashboardAction> }) {
+function Sidebar({ state, dispatch, sidebarWidth }: { state: DashboardState; dispatch: React.Dispatch<DashboardAction>; sidebarWidth: number }) {
   const agents = Object.values(state.agents).sort((a, b) => {
     if (a.online !== b.online) return b.online ? 1 : -1;
     return (a.nick || a.id).localeCompare(b.nick || b.id);
@@ -460,7 +498,7 @@ function Sidebar({ state, dispatch }: { state: DashboardState; dispatch: React.D
   const channels = Object.values(state.channels);
 
   return (
-    <div className="sidebar">
+    <div className="sidebar" style={{ width: sidebarWidth }}>
       <div className="section">
         <h3>AGENTS ({agents.length})</h3>
         <div className="list">
@@ -509,12 +547,124 @@ function Sidebar({ state, dispatch }: { state: DashboardState; dispatch: React.D
   );
 }
 
+// ============ Slurp helpers (browser-side) ============
+
+async function readFileAsText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsText(file);
+  });
+}
+
+async function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.split(',')[1] || '');
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function isBinaryFile(file: File): boolean {
+  const binaryTypes = [
+    'image/', 'audio/', 'video/', 'application/octet-stream',
+    'application/zip', 'application/gzip', 'application/pdf',
+    'application/wasm', 'font/'
+  ];
+  return binaryTypes.some(t => file.type.startsWith(t)) || file.type === '';
+}
+
+async function collectDroppedFiles(items: DataTransferItemList): Promise<File[]> {
+  const files: File[] = [];
+
+  async function walkEntry(entry: FileSystemEntry, pathPrefix: string) {
+    if (entry.isFile) {
+      const file = await new Promise<File>((resolve, reject) => {
+        (entry as FileSystemFileEntry).file(resolve, reject);
+      });
+      // Attach relative path
+      Object.defineProperty(file, 'relativePath', { value: pathPrefix + entry.name });
+      files.push(file);
+    } else if (entry.isDirectory) {
+      const dirReader = (entry as FileSystemDirectoryEntry).createReader();
+      const entries = await new Promise<FileSystemEntry[]>((resolve, reject) => {
+        dirReader.readEntries(resolve, reject);
+      });
+      for (const child of entries) {
+        await walkEntry(child, pathPrefix + entry.name + '/');
+      }
+    }
+  }
+
+  for (let i = 0; i < items.length; i++) {
+    const entry = items[i].webkitGetAsEntry?.();
+    if (entry) {
+      await walkEntry(entry, '');
+    }
+  }
+  return files;
+}
+
+async function packFilesToSlurp(files: File[], name: string): Promise<string> {
+  const lines: string[] = [];
+  lines.push('#!/bin/sh');
+  lines.push('# --- SLURP v1 ---');
+  lines.push('#');
+  lines.push(`# name: ${name}`);
+  lines.push(`# files: ${files.length}`);
+  lines.push(`# created: ${new Date().toISOString()}`);
+  lines.push('#');
+  lines.push('');
+  lines.push('set -e');
+  lines.push('');
+  lines.push(`echo "applying ${name}..."`);
+  lines.push('');
+
+  for (const file of files) {
+    const relPath = (file as File & { relativePath?: string }).relativePath || file.name;
+    const marker = 'SLURP_END_' + relPath.replace(/[/.]/g, '_');
+    const dir = relPath.includes('/') ? relPath.split('/').slice(0, -1).join('/') : null;
+
+    if (dir) {
+      lines.push(`mkdir -p '${dir}'`);
+    }
+
+    if (isBinaryFile(file)) {
+      const b64 = await readFileAsBase64(file);
+      lines.push(`base64 -d > '${relPath}' << '${marker}'`);
+      const wrapped = b64.match(/.{1,76}/g)?.join('\n') || '';
+      lines.push(wrapped);
+    } else {
+      const text = await readFileAsText(file);
+      lines.push(`cat > '${relPath}' << '${marker}'`);
+      lines.push(text.endsWith('\n') ? text.slice(0, -1) : text);
+    }
+    lines.push(marker);
+    lines.push('');
+  }
+
+  lines.push('echo ""');
+  lines.push(`echo "done. ${files.length} files extracted."`);
+  lines.push('');
+  return lines.join('\n');
+}
+
+// ============ Components ============
+
 function MessageFeed({ state, dispatch, send }: { state: DashboardState; dispatch: React.Dispatch<DashboardAction>; send: WsSendFn }) {
   const [input, setInput] = useState('');
   const [hideServer, setHideServer] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const [isDragging, setIsDragging] = useState(false);
+  const [transferStatus, setTransferStatus] = useState<string | null>(null);
+  const dragCounter = useRef(0);
   const allMessages = state.messages[state.selectedChannel] || [];
   const messages = hideServer
     ? allMessages.filter(m => m.from !== '@server')
@@ -574,8 +724,75 @@ function MessageFeed({ state, dispatch, send }: { state: DashboardState; dispatc
     setInput('');
   };
 
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current++;
+    if (e.dataTransfer.types.includes('Files')) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current--;
+    if (dragCounter.current === 0) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current = 0;
+    setIsDragging(false);
+
+    if (state.mode === 'lurk') return;
+
+    const items = e.dataTransfer.items;
+    if (!items || items.length === 0) return;
+
+    setTransferStatus('Reading files...');
+    try {
+      const files = await collectDroppedFiles(items);
+      if (files.length === 0) {
+        setTransferStatus(null);
+        return;
+      }
+
+      setTransferStatus(`Packing ${files.length} file(s)...`);
+      const firstEntry = e.dataTransfer.items[0].webkitGetAsEntry?.();
+      const archiveName = firstEntry?.name || 'drop';
+      const slurpContent = await packFilesToSlurp(files, archiveName);
+
+      setTransferStatus(`Sending ${files.length} file(s) to ${state.selectedChannel}...`);
+      send({ type: 'send_message', data: { to: state.selectedChannel, content: slurpContent } });
+
+      setTransferStatus(`Sent ${files.length} file(s) as slurp archive.`);
+      setTimeout(() => setTransferStatus(null), 3000);
+    } catch (err) {
+      setTransferStatus(`Error: ${(err as Error).message}`);
+      setTimeout(() => setTransferStatus(null), 5000);
+    }
+  };
+
   return (
-    <div className="message-feed">
+    <div
+      className="message-feed"
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {isDragging && (
+        <div className="drop-overlay">
+          <div className="drop-overlay-text">
+            Drop files to send as slurp archive to {state.selectedChannel}
+          </div>
+        </div>
+      )}
       <div className="feed-header">
         <span className="channel-title">{state.selectedChannel || 'Select a channel'}</span>
         <label className="server-toggle">
@@ -615,6 +832,12 @@ function MessageFeed({ state, dispatch, send }: { state: DashboardState; dispatc
               : `${typingInChannel[0]} and ${typingInChannel.length - 1} others are typing...`}
         </div>
       )}
+      {transferStatus && (
+        <div className="file-transfer">
+          {!transferStatus.startsWith('Sent') && !transferStatus.startsWith('Error') && <span className="spinner" />}
+          {transferStatus}
+        </div>
+      )}
       <form className="input-bar" onSubmit={handleSend}>
         <input
           type="text"
@@ -629,14 +852,15 @@ function MessageFeed({ state, dispatch, send }: { state: DashboardState; dispatc
   );
 }
 
-function RightPanel({ state, dispatch, send }: { state: DashboardState; dispatch: React.Dispatch<DashboardAction>; send: WsSendFn }) {
+function RightPanel({ state, dispatch, send, panelWidth }: { state: DashboardState; dispatch: React.Dispatch<DashboardAction>; send: WsSendFn; panelWidth: number }) {
+  const panelStyle = { width: panelWidth };
   const [renameValue, setRenameValue] = useState('');
   const [isRenaming, setIsRenaming] = useState(false);
   const [skillsFilter, setSkillsFilter] = useState('');
 
   if (state.rightPanel === 'leaderboard') {
     return (
-      <div className="right-panel">
+      <div className="right-panel" style={panelStyle}>
         <h3>LEADERBOARD</h3>
         <div className="leaderboard">
           {state.leaderboard.map((entry, i) => (
@@ -662,7 +886,7 @@ function RightPanel({ state, dispatch, send }: { state: DashboardState; dispatch
       (s.description && s.description.toLowerCase().includes(skillsFilter.toLowerCase()))
     );
     return (
-      <div className="right-panel">
+      <div className="right-panel" style={panelStyle}>
         <h3>SKILLS MARKETPLACE</h3>
         <input
           type="text"
@@ -691,7 +915,7 @@ function RightPanel({ state, dispatch, send }: { state: DashboardState; dispatch
   if (state.rightPanel === 'proposals') {
     const proposals = Object.values(state.proposals);
     return (
-      <div className="right-panel">
+      <div className="right-panel" style={panelStyle}>
         <h3>PROPOSALS ({proposals.length})</h3>
         <div className="proposals">
           {proposals.map(p => (
@@ -725,7 +949,7 @@ function RightPanel({ state, dispatch, send }: { state: DashboardState; dispatch
   if (state.rightPanel === 'disputes') {
     const disputes = Object.values(state.disputes).sort((a, b) => b.updated_at - a.updated_at);
     return (
-      <div className="right-panel">
+      <div className="right-panel" style={panelStyle}>
         <h3>DISPUTES ({disputes.length})</h3>
         <div className="disputes">
           {disputes.map(d => (
@@ -765,7 +989,7 @@ function RightPanel({ state, dispatch, send }: { state: DashboardState; dispatch
     const dispute = state.disputes[disputeId];
     if (!dispute) {
       return (
-        <div className="right-panel">
+        <div className="right-panel" style={panelStyle}>
           <button className="back-btn" onClick={() => dispatch({ type: 'SET_RIGHT_PANEL', panel: 'disputes' })}>Back to Disputes</button>
           <div className="empty">Dispute not found</div>
         </div>
@@ -775,7 +999,7 @@ function RightPanel({ state, dispatch, send }: { state: DashboardState; dispatch
     const getAgentName = (id: string) => state.agents[id]?.nick || id;
 
     return (
-      <div className="right-panel dispute-detail">
+      <div className="right-panel dispute-detail" style={panelStyle}>
         <button className="back-btn" onClick={() => dispatch({ type: 'SET_RIGHT_PANEL', panel: 'disputes' })}>Back to Disputes</button>
         <h3>DISPUTE DETAIL</h3>
 
@@ -916,7 +1140,7 @@ function RightPanel({ state, dispatch, send }: { state: DashboardState; dispatch
 
   if (!agent) {
     return (
-      <div className="right-panel">
+      <div className="right-panel" style={panelStyle}>
         <div className="empty">Select an agent to view details</div>
       </div>
     );
@@ -937,7 +1161,7 @@ function RightPanel({ state, dispatch, send }: { state: DashboardState; dispatch
   );
 
   return (
-    <div className="right-panel">
+    <div className="right-panel" style={panelStyle}>
       <h3>AGENT DETAIL</h3>
       <div className="agent-detail">
         {isRenaming ? (
@@ -1006,15 +1230,19 @@ function RightPanel({ state, dispatch, send }: { state: DashboardState; dispatch
 export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const send = useWebSocket(dispatch);
+  const sidebar = useResizable(220, 160, 400, 'left');
+  const rightPanel = useResizable(280, 200, 500, 'right');
 
   return (
     <DashboardContext.Provider value={{ state, dispatch, send }}>
       <div className="dashboard">
         <TopBar state={state} send={send} />
         <div className="main">
-          <Sidebar state={state} dispatch={dispatch} />
+          <Sidebar state={state} dispatch={dispatch} sidebarWidth={sidebar.width} />
+          <div className="resize-handle" ref={sidebar.handleRef} onMouseDown={sidebar.onMouseDown} />
           <MessageFeed state={state} dispatch={dispatch} send={send} />
-          <RightPanel state={state} dispatch={dispatch} send={send} />
+          <div className="resize-handle" ref={rightPanel.handleRef} onMouseDown={rightPanel.onMouseDown} />
+          <RightPanel state={state} dispatch={dispatch} send={send} panelWidth={rightPanel.width} />
         </div>
       </div>
     </DashboardContext.Provider>

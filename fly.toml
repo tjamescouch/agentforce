@@ -1,4 +1,4 @@
-app = 'agentctl'
+app = 'agentchat-dashboard'
 primary_region = 'sjc'
 
 [build]
