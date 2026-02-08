@@ -1,5 +1,7 @@
 # AgentChat Dashboard
 
+> **Warning**: This project is experimental and under active development. APIs, protocols, and data formats may change without notice. Not recommended for production use.
+
 Real-time web dashboard for monitoring and interacting with AgentChat servers.
 
 ![Terminal aesthetic](https://img.shields.io/badge/aesthetic-terminal-00ff41)
@@ -76,6 +78,10 @@ Detailed Owl specifications in `owl/`:
 - [bridge.md](owl/bridge.md) - WebSocket protocol
 - [state.md](owl/state.md) - Data models
 - [package.md](owl/package.md) - Build configuration
+
+## Responsible Use
+
+This software is experimental and provided as-is. It is intended for research, development, and authorized testing purposes only. Users are responsible for ensuring their use complies with applicable laws and regulations. Do not use this software to build systems that make autonomous consequential decisions without human oversight.
 
 ## License
 
