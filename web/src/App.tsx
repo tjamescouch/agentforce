@@ -10,6 +10,7 @@ interface Agent {
   online: boolean;
   presence?: string;
   event?: string;
+  verified?: boolean;
 }
 
 interface Channel {
@@ -50,6 +51,49 @@ interface Skill {
   description?: string;
 }
 
+interface DisputeEvidenceItem {
+  kind: string;
+  label: string;
+  value: string;
+  url?: string;
+}
+
+interface DisputeEvidence {
+  items: DisputeEvidenceItem[];
+  statement: string;
+  submitted_at: number;
+}
+
+interface ArbiterSlot {
+  agent_id: string;
+  status: string;
+  accepted_at?: number;
+  vote?: {
+    verdict: string;
+    reasoning: string;
+    voted_at: number;
+  };
+}
+
+interface Dispute {
+  id: string;
+  proposal_id: string;
+  disputant: string;
+  respondent: string;
+  reason: string;
+  phase: string;
+  arbiters: ArbiterSlot[];
+  disputant_evidence?: DisputeEvidence;
+  respondent_evidence?: DisputeEvidence;
+  verdict?: string;
+  rating_changes?: Record<string, { old: number; new: number; delta: number }>;
+  created_at: number;
+  evidence_deadline?: number;
+  vote_deadline?: number;
+  resolved_at?: number;
+  updated_at: number;
+}
+
 interface LeaderboardEntry {
   id: string;
   nick?: string;
@@ -70,11 +114,13 @@ interface DashboardState {
   leaderboard: LeaderboardEntry[];
   skills: Skill[];
   proposals: Record<string, Proposal>;
+  disputes: Record<string, Dispute>;
   selectedChannel: string;
   selectedAgent: Agent | null;
   rightPanel: string;
   dashboardAgent: DashboardAgent | null;
   unreadCounts: Record<string, number>;
+  typingAgents: Record<string, number>;
 }
 
 type DashboardAction =
@@ -84,12 +130,15 @@ type DashboardAction =
   | { type: 'MESSAGE'; data: Message }
   | { type: 'AGENT_UPDATE'; data: Agent }
   | { type: 'PROPOSAL_UPDATE'; data: Proposal }
+  | { type: 'DISPUTE_UPDATE'; data: Dispute }
   | { type: 'LEADERBOARD_UPDATE'; data: LeaderboardEntry[] }
   | { type: 'SKILLS_UPDATE'; data: Skill[] }
   | { type: 'SET_MODE'; mode: string }
   | { type: 'SELECT_CHANNEL'; channel: string }
   | { type: 'SELECT_AGENT'; agent: Agent }
-  | { type: 'SET_RIGHT_PANEL'; panel: string };
+  | { type: 'SET_RIGHT_PANEL'; panel: string }
+  | { type: 'TYPING'; data: { from: string; from_name?: string; channel: string } }
+  | { type: 'CLEAR_TYPING'; agentId: string };
 
 interface StateSyncPayload {
   agents: Agent[];
@@ -98,6 +147,7 @@ interface StateSyncPayload {
   leaderboard: LeaderboardEntry[];
   skills: Skill[];
   proposals: Proposal[];
+  disputes: Dispute[];
   dashboardAgent: DashboardAgent;
 }
 
@@ -149,11 +199,13 @@ const initialState: DashboardState = {
   leaderboard: [],
   skills: [],
   proposals: {},
+  disputes: {},
   selectedChannel: '#general',
   selectedAgent: null,
   rightPanel: 'proposals',
   dashboardAgent: null,
-  unreadCounts: {}
+  unreadCounts: {},
+  typingAgents: {}
 };
 
 function reducer(state: DashboardState, action: DashboardAction): DashboardState {
@@ -180,6 +232,7 @@ function reducer(state: DashboardState, action: DashboardAction): DashboardState
         leaderboard: action.data.leaderboard || [],
         skills: action.data.skills || [],
         proposals: Object.fromEntries((action.data.proposals || []).map(p => [p.id, p])),
+        disputes: Object.fromEntries((action.data.disputes || []).map(d => [d.id, d])),
         dashboardAgent: action.data.dashboardAgent
       };
     }
@@ -216,6 +269,11 @@ function reducer(state: DashboardState, action: DashboardAction): DashboardState
         ...state,
         proposals: { ...state.proposals, [action.data.id]: action.data }
       };
+    case 'DISPUTE_UPDATE':
+      return {
+        ...state,
+        disputes: { ...state.disputes, [action.data.id]: action.data }
+      };
     case 'LEADERBOARD_UPDATE':
       return { ...state, leaderboard: action.data };
     case 'SKILLS_UPDATE':
@@ -234,6 +292,15 @@ function reducer(state: DashboardState, action: DashboardAction): DashboardState
       return { ...state, selectedAgent: action.agent, rightPanel: 'detail' };
     case 'SET_RIGHT_PANEL':
       return { ...state, rightPanel: action.panel };
+    case 'TYPING': {
+      const key = `${action.data.from}:${action.data.channel}`;
+      return { ...state, typingAgents: { ...state.typingAgents, [key]: Date.now() } };
+    }
+    case 'CLEAR_TYPING': {
+      const cleared = { ...state.typingAgents };
+      delete cleared[action.agentId];
+      return { ...state, typingAgents: cleared };
+    }
     default:
       return state;
   }
@@ -245,6 +312,14 @@ function agentColor(nick: string): string {
   const hash = (nick || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0);
   const hue = hash % 360;
   return `hsl(${hue}, 70%, 60%)`;
+}
+
+function safeUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return url;
+    return null;
+  } catch { return null; }
 }
 
 function formatTime(ts: number): string {
@@ -299,11 +374,17 @@ function useWebSocket(dispatch: React.Dispatch<DashboardAction>): WsSendFn {
           case 'proposal_update':
             dispatch({ type: 'PROPOSAL_UPDATE', data: msg.data });
             break;
+          case 'dispute_update':
+            dispatch({ type: 'DISPUTE_UPDATE', data: msg.data });
+            break;
           case 'leaderboard_update':
             dispatch({ type: 'LEADERBOARD_UPDATE', data: msg.data });
             break;
           case 'skills_update':
             dispatch({ type: 'SKILLS_UPDATE', data: msg.data });
+            break;
+          case 'typing':
+            dispatch({ type: 'TYPING', data: msg.data });
             break;
           case 'mode_changed':
             dispatch({ type: 'SET_MODE', mode: msg.data.mode });
@@ -400,6 +481,7 @@ function Sidebar({ state, dispatch }: { state: DashboardState; dispatch: React.D
               <span className="nick" style={{ color: agentColor(agent.nick || agent.id) }}>
                 {getDisplayName(agent)}
               </span>
+              {agent.verified && <span className="verified-badge" title="Verified identity">&#x2713;</span>}
             </div>
           ))}
         </div>
@@ -428,12 +510,13 @@ function Sidebar({ state, dispatch }: { state: DashboardState; dispatch: React.D
         <button onClick={() => dispatch({ type: 'SET_RIGHT_PANEL', panel: 'leaderboard' })}>Leaderboard</button>
         <button onClick={() => dispatch({ type: 'SET_RIGHT_PANEL', panel: 'skills' })}>Skills</button>
         <button onClick={() => dispatch({ type: 'SET_RIGHT_PANEL', panel: 'proposals' })}>Proposals</button>
+        <button onClick={() => dispatch({ type: 'SET_RIGHT_PANEL', panel: 'disputes' })}>Disputes</button>
       </div>
     </div>
   );
 }
 
-function MessageFeed({ state, send }: { state: DashboardState; send: WsSendFn }) {
+function MessageFeed({ state, dispatch, send }: { state: DashboardState; dispatch: React.Dispatch<DashboardAction>; send: WsSendFn }) {
   const [input, setInput] = useState('');
   const [hideServer, setHideServer] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -462,6 +545,27 @@ function MessageFeed({ state, send }: { state: DashboardState; send: WsSendFn })
     setIsAtBottom(true);
     messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
   }, [state.selectedChannel]);
+
+  // Auto-clear stale typing indicators after 4 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      Object.entries(state.typingAgents).forEach(([key, ts]) => {
+        if (now - ts > 4000) {
+          dispatch({ type: 'CLEAR_TYPING', agentId: key });
+        }
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [state.typingAgents, dispatch]);
+
+  // Get typing agents for current channel
+  const typingInChannel = Object.entries(state.typingAgents)
+    .filter(([key, ts]) => key.endsWith(`:${state.selectedChannel}`) && Date.now() - ts < 4000)
+    .map(([key]) => {
+      const agentId = key.split(':')[0];
+      return state.agents[agentId]?.nick || agentId;
+    });
 
   const jumpToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -504,6 +608,15 @@ function MessageFeed({ state, send }: { state: DashboardState; send: WsSendFn })
         <button className="jump-to-bottom" onClick={jumpToBottom}>
           Jump to bottom
         </button>
+      )}
+      {typingInChannel.length > 0 && (
+        <div className="typing-indicator">
+          {typingInChannel.length === 1
+            ? `${typingInChannel[0]} is typing...`
+            : typingInChannel.length === 2
+              ? `${typingInChannel[0]} and ${typingInChannel[1]} are typing...`
+              : `${typingInChannel[0]} and ${typingInChannel.length - 1} others are typing...`}
+        </div>
       )}
       <form className="input-bar" onSubmit={handleSend}>
         <input
@@ -611,6 +724,195 @@ function RightPanel({ state, dispatch, send }: { state: DashboardState; dispatch
     );
   }
 
+  if (state.rightPanel === 'disputes') {
+    const disputes = Object.values(state.disputes).sort((a, b) => b.updated_at - a.updated_at);
+    return (
+      <div className="right-panel">
+        <h3>DISPUTES ({disputes.length})</h3>
+        <div className="disputes">
+          {disputes.map(d => (
+            <div
+              key={d.id}
+              className={`dispute-entry phase-${d.phase}`}
+              onClick={() => dispatch({ type: 'SET_RIGHT_PANEL', panel: `dispute:${d.id}` })}
+            >
+              <div className="dispute-header">
+                <span className={`phase-badge ${d.phase}`}>{d.phase}</span>
+                {d.verdict && <span className={`verdict-badge ${d.verdict}`}>{d.verdict}</span>}
+              </div>
+              <div className="dispute-reason">{d.reason.length > 60 ? d.reason.slice(0, 60) + '...' : d.reason}</div>
+              <div className="dispute-parties">
+                <span style={{ color: agentColor(state.agents[d.disputant]?.nick || d.disputant) }}>
+                  {state.agents[d.disputant]?.nick || d.disputant}
+                </span>
+                <span className="vs"> vs </span>
+                <span style={{ color: agentColor(state.agents[d.respondent]?.nick || d.respondent) }}>
+                  {state.agents[d.respondent]?.nick || d.respondent}
+                </span>
+              </div>
+              <div className="dispute-meta">
+                <span className="time">{formatTime(d.created_at)}</span>
+                <span className="arbiter-count">{d.arbiters.filter(a => a.status === 'accepted').length}/3 arbiters</span>
+              </div>
+            </div>
+          ))}
+          {disputes.length === 0 && <div className="empty">No active disputes</div>}
+        </div>
+      </div>
+    );
+  }
+
+  if (state.rightPanel.startsWith('dispute:')) {
+    const disputeId = state.rightPanel.slice('dispute:'.length);
+    const dispute = state.disputes[disputeId];
+    if (!dispute) {
+      return (
+        <div className="right-panel">
+          <button className="back-btn" onClick={() => dispatch({ type: 'SET_RIGHT_PANEL', panel: 'disputes' })}>Back to Disputes</button>
+          <div className="empty">Dispute not found</div>
+        </div>
+      );
+    }
+
+    const getAgentName = (id: string) => state.agents[id]?.nick || id;
+
+    return (
+      <div className="right-panel dispute-detail">
+        <button className="back-btn" onClick={() => dispatch({ type: 'SET_RIGHT_PANEL', panel: 'disputes' })}>Back to Disputes</button>
+        <h3>DISPUTE DETAIL</h3>
+
+        <div className="dispute-phase-bar">
+          <span className={`phase-badge ${dispute.phase}`}>{dispute.phase.replace('_', ' ')}</span>
+          {dispute.verdict && <span className={`verdict-badge ${dispute.verdict}`}>Verdict: {dispute.verdict}</span>}
+        </div>
+
+        <div className="dispute-section">
+          <div className="section-label">Parties</div>
+          <div className="dispute-parties-detail">
+            <div className="party disputant">
+              <span className="party-role">Disputant</span>
+              <span className="party-name" style={{ color: agentColor(getAgentName(dispute.disputant)) }}>
+                {getAgentName(dispute.disputant)}
+              </span>
+            </div>
+            <span className="vs">vs</span>
+            <div className="party respondent">
+              <span className="party-role">Respondent</span>
+              <span className="party-name" style={{ color: agentColor(getAgentName(dispute.respondent)) }}>
+                {getAgentName(dispute.respondent)}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="dispute-section">
+          <div className="section-label">Reason</div>
+          <div className="dispute-reason-full">{dispute.reason}</div>
+        </div>
+
+        <div className="dispute-section">
+          <div className="section-label">Arbiter Panel</div>
+          <div className="arbiter-panel">
+            {dispute.arbiters.map((a, i) => (
+              <div key={i} className={`arbiter-slot status-${a.status}`}>
+                <span className="arbiter-name" style={{ color: agentColor(getAgentName(a.agent_id)) }}>
+                  {getAgentName(a.agent_id)}
+                </span>
+                <span className={`arbiter-status ${a.status}`}>{a.status}</span>
+                {a.vote && (
+                  <div className="arbiter-vote-info">
+                    <span className={`vote-verdict ${a.vote.verdict}`}>{a.vote.verdict}</span>
+                    <span className="vote-reasoning">{a.vote.reasoning}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+            {dispute.arbiters.length === 0 && <div className="empty">Panel not yet formed</div>}
+          </div>
+        </div>
+
+        {(dispute.disputant_evidence || dispute.respondent_evidence) && (
+          <div className="dispute-section">
+            <div className="section-label">Evidence</div>
+            {dispute.disputant_evidence && (
+              <div className="evidence-block">
+                <div className="evidence-party">
+                  <span style={{ color: agentColor(getAgentName(dispute.disputant)) }}>
+                    {getAgentName(dispute.disputant)}
+                  </span>
+                  <span className="evidence-count">({dispute.disputant_evidence.items.length} items)</span>
+                </div>
+                <div className="evidence-statement">{dispute.disputant_evidence.statement}</div>
+                <div className="evidence-items">
+                  {dispute.disputant_evidence.items.map((item, i) => (
+                    <div key={i} className="evidence-item">
+                      <span className={`evidence-kind ${item.kind}`}>{item.kind}</span>
+                      <span className="evidence-label">{item.label}</span>
+                      {item.url && safeUrl(item.url) && <a href={safeUrl(item.url)!} target="_blank" rel="noopener noreferrer" className="evidence-link">View</a>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {dispute.respondent_evidence && (
+              <div className="evidence-block">
+                <div className="evidence-party">
+                  <span style={{ color: agentColor(getAgentName(dispute.respondent)) }}>
+                    {getAgentName(dispute.respondent)}
+                  </span>
+                  <span className="evidence-count">({dispute.respondent_evidence.items.length} items)</span>
+                </div>
+                <div className="evidence-statement">{dispute.respondent_evidence.statement}</div>
+                <div className="evidence-items">
+                  {dispute.respondent_evidence.items.map((item, i) => (
+                    <div key={i} className="evidence-item">
+                      <span className={`evidence-kind ${item.kind}`}>{item.kind}</span>
+                      <span className="evidence-label">{item.label}</span>
+                      {item.url && safeUrl(item.url) && <a href={safeUrl(item.url)!} target="_blank" rel="noopener noreferrer" className="evidence-link">View</a>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {dispute.rating_changes && Object.keys(dispute.rating_changes).length > 0 && (
+          <div className="dispute-section">
+            <div className="section-label">Rating Changes</div>
+            <div className="rating-changes">
+              {Object.entries(dispute.rating_changes).map(([agentId, change]) => (
+                <div key={agentId} className={`rating-change ${change.delta > 0 ? 'positive' : change.delta < 0 ? 'negative' : 'neutral'}`}>
+                  <span className="rating-agent" style={{ color: agentColor(getAgentName(agentId)) }}>
+                    {getAgentName(agentId)}
+                  </span>
+                  <span className="rating-delta">{change.delta > 0 ? '+' : ''}{change.delta}</span>
+                  <span className="rating-value">{change.old} → {change.new}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="dispute-section">
+          <div className="section-label">Timeline</div>
+          <div className="dispute-timeline">
+            <div className="timeline-entry">Filed: {new Date(dispute.created_at).toLocaleString()}</div>
+            {dispute.evidence_deadline && (
+              <div className="timeline-entry">Evidence deadline: {new Date(dispute.evidence_deadline).toLocaleString()}</div>
+            )}
+            {dispute.vote_deadline && (
+              <div className="timeline-entry">Vote deadline: {new Date(dispute.vote_deadline).toLocaleString()}</div>
+            )}
+            {dispute.resolved_at && (
+              <div className="timeline-entry">Resolved: {new Date(dispute.resolved_at).toLocaleString()}</div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Agent detail
   const agent = state.selectedAgent;
 
@@ -662,9 +964,9 @@ function RightPanel({ state, dispatch, send }: { state: DashboardState; dispatch
             {agent.nick || agent.id}
           </div>
         )}
-        <div className="detail-id">{agent.id}</div>
+        <div className="detail-id">{agent.id}{agent.verified && <span className="verified-badge" title="Verified identity"> &#x2713;</span>}</div>
         <div className={`detail-status ${agent.online ? 'online' : 'offline'}`}>
-          {agent.online ? 'Online' : 'Offline'}
+          {agent.online ? 'Online' : 'Offline'}{agent.verified && ' (Verified)'}
         </div>
         {agentElo && (
           <div className="detail-elo">
@@ -712,7 +1014,7 @@ export default function App() {
         <TopBar state={state} send={send} />
         <div className="main">
           <Sidebar state={state} dispatch={dispatch} />
-          <MessageFeed state={state} send={send} />
+          <MessageFeed state={state} dispatch={dispatch} send={send} />
           <RightPanel state={state} dispatch={dispatch} send={send} />
         </div>
       </div>

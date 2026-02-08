@@ -54,6 +54,7 @@ interface AgentState {
   lastSeen: number;
   online: boolean;
   presence?: string;
+  verified?: boolean;
 }
 
 interface ChannelState {
@@ -86,6 +87,50 @@ interface ProposalState {
   updatedAt: number;
 }
 
+interface DisputeEvidenceItem {
+  kind: string;
+  label: string;
+  value: string;
+  url?: string;
+  hash?: string;
+}
+
+interface DisputeEvidence {
+  items: DisputeEvidenceItem[];
+  statement: string;
+  submitted_at: number;
+}
+
+interface ArbiterSlot {
+  agent_id: string;
+  status: string;
+  accepted_at?: number;
+  vote?: {
+    verdict: string;
+    reasoning: string;
+    voted_at: number;
+  };
+}
+
+interface DisputeState {
+  id: string;
+  proposal_id: string;
+  disputant: string;
+  respondent: string;
+  reason: string;
+  phase: string;
+  arbiters: ArbiterSlot[];
+  disputant_evidence?: DisputeEvidence;
+  respondent_evidence?: DisputeEvidence;
+  verdict?: string;
+  rating_changes?: Record<string, { old: number; new: number; delta: number }>;
+  created_at: number;
+  evidence_deadline?: number;
+  vote_deadline?: number;
+  resolved_at?: number;
+  updated_at: number;
+}
+
 interface DashboardClient {
   ws: WebSocket;
   ip: string;
@@ -106,11 +151,12 @@ interface AgentChatMsg {
   content?: string;
   ts?: number;
   channel?: string;
-  list?: Array<{ name: string; agents?: number; id: string; presence?: string }>;
+  list?: Array<{ name: string; agents?: number; id: string; presence?: string; has_pubkey?: boolean }>;
   channels?: Array<{ name: string; agents?: number }>;
-  agents?: Array<{ id: string; name: string; presence?: string }>;
+  agents?: Array<{ id: string; name: string; presence?: string; has_pubkey?: boolean }>;
   agent?: string;
   agentId?: string;
+  from_name?: string;
   proposal_id?: string;
   task?: string;
   amount?: number;
@@ -121,6 +167,26 @@ interface AgentChatMsg {
   code?: string;
   message?: string;
   sig?: string;
+  // Dispute fields
+  dispute_id?: string;
+  reason?: string;
+  phase?: string;
+  disputant?: string;
+  respondent?: string;
+  server_nonce?: string;
+  arbiters?: ArbiterSlot[];
+  arbiter?: string;
+  arbiter_status?: string;
+  party?: string;
+  evidence_count?: number;
+  statement?: string;
+  items?: DisputeEvidenceItem[];
+  verdict?: string;
+  votes?: Array<{ arbiter: string; verdict: string; reasoning: string; voted_at: number }>;
+  rating_changes?: Record<string, { old: number; new: number; delta: number }>;
+  evidence_deadline?: number;
+  vote_deadline?: number;
+  resolved_at?: number;
 }
 
 interface Skill {
@@ -188,6 +254,7 @@ const state = {
   channels: new Map<string, ChannelState>(),
   leaderboard: [] as Array<{ id: string; nick?: string; elo: number }>,
   proposals: new Map<string, ProposalState>(),
+  disputes: new Map<string, DisputeState>(),
   skills: [] as Skill[],
   connected: false,
   dashboardAgent: null as { id: string | null; nick: string } | null
@@ -346,7 +413,8 @@ function handleAgentChatMessage(msg: AgentChatMsg): void {
             channels: new Set([msg.channel!]),
             lastSeen: Date.now(),
             online: true,
-            presence: a.presence
+            presence: a.presence,
+            verified: !!a.has_pubkey
           };
           if (state.agents.has(a.id)) {
             state.agents.get(a.id)!.channels.add(msg.channel!);
@@ -455,6 +523,137 @@ function handleAgentChatMessage(msg: AgentChatMsg): void {
       console.error('AgentChat error:', msg.code, msg.message);
       break;
 
+    // Agentcourt dispute messages
+    case 'DISPUTE_INTENT_ACK': {
+      const dispute: DisputeState = {
+        id: msg.dispute_id!,
+        proposal_id: msg.proposal_id!,
+        disputant: msg.disputant || msg.from || '',
+        respondent: msg.respondent || '',
+        reason: msg.reason || '',
+        phase: 'reveal_pending',
+        arbiters: [],
+        created_at: msg.ts || Date.now(),
+        updated_at: Date.now()
+      };
+      state.disputes.set(dispute.id, dispute);
+      broadcastToDashboards({ type: 'dispute_update', data: dispute });
+      break;
+    }
+
+    case 'DISPUTE_REVEALED': {
+      const d = msg.dispute_id && state.disputes.get(msg.dispute_id);
+      if (d) {
+        d.phase = 'panel_selection';
+        d.updated_at = Date.now();
+        broadcastToDashboards({ type: 'dispute_update', data: d });
+      }
+      break;
+    }
+
+    case 'PANEL_FORMED': {
+      const d = msg.dispute_id && state.disputes.get(msg.dispute_id);
+      if (d) {
+        d.phase = 'arbiter_response';
+        d.arbiters = (msg.arbiters || []).map(a => ({ ...a }));
+        d.updated_at = Date.now();
+        broadcastToDashboards({ type: 'dispute_update', data: d });
+      }
+      break;
+    }
+
+    case 'ARBITER_ASSIGNED': {
+      // Individual arbiter notification — update slot status if we have the dispute
+      const d = msg.dispute_id && state.disputes.get(msg.dispute_id);
+      if (d && msg.arbiter) {
+        const slot = d.arbiters.find(a => a.agent_id === msg.arbiter);
+        if (slot && msg.arbiter_status) {
+          slot.status = msg.arbiter_status;
+          if (msg.arbiter_status === 'accepted') slot.accepted_at = Date.now();
+        }
+        // Check if all arbiters responded — transition to evidence phase
+        const allResponded = d.arbiters.every(a => a.status === 'accepted' || a.status === 'declined' || a.status === 'replaced');
+        const allAccepted = d.arbiters.filter(a => a.status === 'accepted').length >= 3;
+        if (allResponded && allAccepted) {
+          d.phase = 'evidence';
+          d.evidence_deadline = msg.evidence_deadline;
+        }
+        d.updated_at = Date.now();
+        broadcastToDashboards({ type: 'dispute_update', data: d });
+      }
+      break;
+    }
+
+    case 'EVIDENCE_RECEIVED': {
+      const d = msg.dispute_id && state.disputes.get(msg.dispute_id);
+      if (d) {
+        d.phase = 'evidence';
+        const evidence: DisputeEvidence = {
+          items: msg.items || [],
+          statement: msg.statement || '',
+          submitted_at: Date.now()
+        };
+        if (msg.party === d.disputant) {
+          d.disputant_evidence = evidence;
+        } else if (msg.party === d.respondent) {
+          d.respondent_evidence = evidence;
+        }
+        d.updated_at = Date.now();
+        broadcastToDashboards({ type: 'dispute_update', data: d });
+      }
+      break;
+    }
+
+    case 'CASE_READY': {
+      const d = msg.dispute_id && state.disputes.get(msg.dispute_id);
+      if (d) {
+        d.phase = 'deliberation';
+        d.vote_deadline = msg.vote_deadline;
+        d.updated_at = Date.now();
+        broadcastToDashboards({ type: 'dispute_update', data: d });
+      }
+      break;
+    }
+
+    case 'VERDICT': {
+      const d = msg.dispute_id && state.disputes.get(msg.dispute_id);
+      if (d) {
+        d.phase = 'resolved';
+        d.verdict = msg.verdict;
+        d.rating_changes = msg.rating_changes;
+        d.resolved_at = msg.resolved_at || Date.now();
+        if (msg.votes) {
+          msg.votes.forEach(v => {
+            const slot = d.arbiters.find(a => a.agent_id === v.arbiter);
+            if (slot) {
+              slot.status = 'voted';
+              slot.vote = { verdict: v.verdict, reasoning: v.reasoning, voted_at: v.voted_at };
+            }
+          });
+        }
+        d.updated_at = Date.now();
+        broadcastToDashboards({ type: 'dispute_update', data: d });
+      }
+      break;
+    }
+
+    case 'DISPUTE_FALLBACK': {
+      const d = msg.dispute_id && state.disputes.get(msg.dispute_id);
+      if (d) {
+        d.phase = 'fallback';
+        d.updated_at = Date.now();
+        broadcastToDashboards({ type: 'dispute_update', data: d });
+      }
+      break;
+    }
+
+    case 'TYPING':
+      broadcastToDashboards({
+        type: 'typing',
+        data: { from: msg.from, from_name: msg.from_name, channel: msg.channel }
+      });
+      break;
+
     case 'PONG':
       break;
   }
@@ -536,6 +735,7 @@ function getStateSnapshot(): Record<string, unknown> {
     ),
     leaderboard: state.leaderboard,
     proposals: [...state.proposals.values()],
+    disputes: [...state.disputes.values()],
     skills: state.skills,
     dashboardAgent: state.dashboardAgent
   };
