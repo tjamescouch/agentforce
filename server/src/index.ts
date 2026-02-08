@@ -159,7 +159,6 @@ interface AgentChatMsg {
   list?: Array<{ name: string; agents?: number; id: string; presence?: string; verified?: boolean }>;
   channels?: Array<{ name: string; agents?: number }>;
   agents?: Array<{ id: string; name: string; presence?: string; verified?: boolean }>;
-
   agent?: string;
   agentId?: string;
   from_name?: string;
