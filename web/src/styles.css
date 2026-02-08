@@ -1202,6 +1202,310 @@ body {
   border-left: 2px solid var(--border);
 }
 
+/* ============ File Transfer ============ */
+
+/* Drop Zone */
+.drop-zone-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  min-width: 0;
+}
+
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 191, 255, 0.08);
+  border: 2px dashed var(--accent-blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.drop-overlay.uploading {
+  border-style: solid;
+  background: rgba(0, 255, 65, 0.05);
+  border-color: var(--text-primary);
+}
+
+.drop-overlay-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent-blue);
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.drop-icon {
+  font-size: 32px;
+}
+
+/* Modal Overlay */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9998;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  width: 400px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+  animation: panel-slide 0.15s ease-out;
+}
+
+.modal h3 {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+  letter-spacing: 1px;
+}
+
+.modal h4 {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin: 16px 0 8px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+/* File List (in modals) */
+.file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.file-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 8px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.file-name {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.file-size {
+  color: var(--text-muted);
+  margin-left: 12px;
+  white-space: nowrap;
+}
+
+/* Recipient List */
+.recipient-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.recipient-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 13px;
+}
+
+.recipient-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.recipient-item input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: var(--text-primary);
+}
+
+/* Modal Actions */
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  justify-content: flex-end;
+}
+
+.modal-btn {
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.modal-btn:hover {
+  border-color: var(--text-primary);
+}
+
+.modal-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.modal-btn.send {
+  background: var(--text-primary);
+  color: var(--bg-primary);
+  border-color: var(--text-primary);
+  font-weight: 600;
+}
+
+.modal-btn.send:hover {
+  opacity: 0.9;
+}
+
+/* File Offer Banner */
+.file-offer-banner {
+  padding: 10px 16px;
+  background: rgba(0, 191, 255, 0.08);
+  border-bottom: 1px solid rgba(0, 191, 255, 0.2);
+  animation: fadeIn 0.2s ease-out;
+}
+
+.offer-info {
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.offer-files {
+  color: var(--accent-blue);
+  font-weight: 500;
+}
+
+.offer-file-names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.offer-file-tag {
+  font-size: 11px;
+  padding: 2px 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  color: var(--text-secondary);
+}
+
+.offer-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.offer-btn {
+  padding: 4px 12px;
+  border: none;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.offer-btn.accept {
+  background: var(--text-primary);
+  color: var(--bg-primary);
+}
+
+.offer-btn.reject {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.offer-btn:hover {
+  opacity: 0.85;
+}
+
+/* Transfer Progress Bar */
+.transfer-bar {
+  padding: 6px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.transfer-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.transfer-progress-text {
+  color: var(--accent-blue);
+  font-weight: 500;
+}
+
+.transfer-track {
+  height: 3px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.transfer-fill {
+  height: 100%;
+  background: var(--text-primary);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+  box-shadow: 0 0 6px rgba(0, 255, 65, 0.5);
+}
+
+/* Save Modal Input */
+.save-label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 12px 0 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.save-input {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  border-radius: 4px;
+  outline: none;
+}
+
+.save-input:focus {
+  border-color: var(--text-primary);
+}
+
 /* Responsive */
 @media (max-width: 1024px) {
   .sidebar { width: 180px; }

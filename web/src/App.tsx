@@ -106,6 +106,18 @@ interface DashboardAgent {
   nick: string;
 }
 
+interface FileTransferUI {
+  id: string;
+  direction: 'out' | 'in';
+  files: { name: string; size: number }[];
+  totalSize: number;
+  status: 'uploading' | 'selecting' | 'offered' | 'accepted' | 'transferring' | 'complete' | 'rejected' | 'saving' | 'saved' | 'error';
+  progress: number;
+  peer: string;
+  peerNick: string;
+  error?: string;
+}
+
 interface DashboardState {
   connected: boolean;
   mode: string;
@@ -122,6 +134,9 @@ interface DashboardState {
   dashboardAgent: DashboardAgent | null;
   unreadCounts: Record<string, number>;
   typingAgents: Record<string, number>;
+  transfers: Record<string, FileTransferUI>;
+  sendModal: { transferId: string; files: { name: string; size: number }[] } | null;
+  saveModal: { transferId: string; files: { name: string; size: number }[] } | null;
 }
 
 type DashboardAction =
@@ -139,7 +154,12 @@ type DashboardAction =
   | { type: 'SELECT_AGENT'; agent: Agent }
   | { type: 'SET_RIGHT_PANEL'; panel: string }
   | { type: 'TYPING'; data: { from: string; from_name?: string; channel: string } }
-  | { type: 'CLEAR_TYPING'; agentId: string };
+  | { type: 'CLEAR_TYPING'; agentId: string }
+  | { type: 'TRANSFER_UPDATE'; data: FileTransferUI }
+  | { type: 'SHOW_SEND_MODAL'; data: { transferId: string; files: { name: string; size: number }[] } }
+  | { type: 'HIDE_SEND_MODAL' }
+  | { type: 'SHOW_SAVE_MODAL'; data: { transferId: string; files: { name: string; size: number }[] } }
+  | { type: 'HIDE_SAVE_MODAL' };
 
 interface StateSyncPayload {
   agents: Agent[];
@@ -206,7 +226,10 @@ const initialState: DashboardState = {
   rightPanel: 'proposals',
   dashboardAgent: null,
   unreadCounts: {},
-  typingAgents: {}
+  typingAgents: {},
+  transfers: {},
+  sendModal: null,
+  saveModal: null
 };
 
 function reducer(state: DashboardState, action: DashboardAction): DashboardState {
@@ -302,6 +325,19 @@ function reducer(state: DashboardState, action: DashboardAction): DashboardState
       delete cleared[action.agentId];
       return { ...state, typingAgents: cleared };
     }
+    case 'TRANSFER_UPDATE':
+      return {
+        ...state,
+        transfers: { ...state.transfers, [action.data.id]: action.data }
+      };
+    case 'SHOW_SEND_MODAL':
+      return { ...state, sendModal: action.data };
+    case 'HIDE_SEND_MODAL':
+      return { ...state, sendModal: null };
+    case 'SHOW_SAVE_MODAL':
+      return { ...state, saveModal: action.data };
+    case 'HIDE_SAVE_MODAL':
+      return { ...state, saveModal: null };
     default:
       return state;
   }
@@ -389,6 +425,69 @@ function useWebSocket(dispatch: React.Dispatch<DashboardAction>): WsSendFn {
             break;
           case 'mode_changed':
             dispatch({ type: 'SET_MODE', mode: msg.data.mode });
+            break;
+          case 'file_offer':
+            dispatch({
+              type: 'TRANSFER_UPDATE',
+              data: {
+                id: msg.data.transferId,
+                direction: 'in',
+                files: msg.data.files,
+                totalSize: msg.data.totalSize,
+                status: 'offered',
+                progress: 0,
+                peer: msg.data.from,
+                peerNick: msg.data.fromNick
+              }
+            });
+            break;
+          case 'transfer_progress': {
+            const existing = msg.data.transferId;
+            dispatch({
+              type: 'TRANSFER_UPDATE',
+              data: {
+                id: existing,
+                direction: msg.data.recipient ? 'out' : 'in',
+                files: [],
+                totalSize: 0,
+                status: 'transferring',
+                progress: msg.data.progress || Math.round(((msg.data.sent || msg.data.received) / msg.data.total) * 100),
+                peer: msg.data.recipient || '',
+                peerNick: ''
+              }
+            });
+            break;
+          }
+          case 'transfer_complete':
+            dispatch({
+              type: 'SHOW_SAVE_MODAL',
+              data: { transferId: msg.data.transferId, files: msg.data.files }
+            });
+            dispatch({
+              type: 'TRANSFER_UPDATE',
+              data: {
+                id: msg.data.transferId,
+                direction: 'in',
+                files: msg.data.files,
+                totalSize: msg.data.totalSize,
+                status: 'complete',
+                progress: 100,
+                peer: '',
+                peerNick: ''
+              }
+            });
+            break;
+          case 'transfer_update':
+            // Partial transfer status updates (rejected, verified, etc.)
+            break;
+          case 'offer_sent':
+            // Offers dispatched to recipients
+            break;
+          case 'transfer_sent':
+            // All chunks sent to a recipient
+            break;
+          case 'save_complete':
+            dispatch({ type: 'HIDE_SAVE_MODAL' });
             break;
           case 'error':
             console.error('Server error:', msg.data?.code, msg.data?.message);
@@ -587,6 +686,8 @@ function MessageFeed({ state, dispatch, send }: { state: DashboardState; dispatc
           Hide @server
         </label>
       </div>
+      <FileOfferBanner state={state} dispatch={dispatch} send={send} />
+      <TransferBar state={state} />
       <div className="messages" ref={messagesContainerRef} onScroll={handleScroll}>
         {messages.map((msg, i) => (
           <div key={msg.id || i} className="message">
@@ -1003,6 +1104,308 @@ function RightPanel({ state, dispatch, send }: { state: DashboardState; dispatch
   );
 }
 
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function DropZone({ state, dispatch, children }: { state: DashboardState; dispatch: React.Dispatch<DashboardAction>; children: React.ReactNode }) {
+  const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const dragCounter = useRef(0);
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current++;
+    if (e.dataTransfer.types.includes('Files')) {
+      setDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current--;
+    if (dragCounter.current === 0) {
+      setDragging(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    dragCounter.current = 0;
+
+    if (state.mode === 'lurk') {
+      alert('Switch to participate mode to send files');
+      return;
+    }
+
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length === 0) return;
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      files.forEach(f => formData.append('files', f));
+
+      const res = await fetch('/api/upload', { method: 'POST', body: formData });
+
+      if (!res.ok) {
+        const err = await res.json();
+        alert(`Upload failed: ${err.error || res.statusText}`);
+        return;
+      }
+
+      const data = await res.json();
+      dispatch({
+        type: 'SHOW_SEND_MODAL',
+        data: { transferId: data.transferId, files: data.files }
+      });
+    } catch (err) {
+      alert(`Upload failed: ${(err as Error).message}`);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div
+      className="drop-zone-wrapper"
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {children}
+      {dragging && (
+        <div className="drop-overlay">
+          <div className="drop-overlay-content">
+            <span className="drop-icon">&#x2B06;</span>
+            <span>Drop files to send</span>
+          </div>
+        </div>
+      )}
+      {uploading && (
+        <div className="drop-overlay uploading">
+          <div className="drop-overlay-content">
+            <span>Uploading...</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SendFileModal({ state, dispatch, send }: { state: DashboardState; dispatch: React.Dispatch<DashboardAction>; send: WsSendFn }) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const modal = state.sendModal;
+  if (!modal) return null;
+
+  const onlineAgents = Object.values(state.agents).filter(a =>
+    a.online && a.id !== state.dashboardAgent?.id
+  );
+
+  const toggle = (id: string) => {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelected(next);
+  };
+
+  const handleSend = () => {
+    if (selected.size === 0) return;
+    send({
+      type: 'file_send',
+      data: { transferId: modal.transferId, recipients: Array.from(selected) }
+    });
+    dispatch({ type: 'HIDE_SEND_MODAL' });
+    setSelected(new Set());
+  };
+
+  const handleCancel = () => {
+    dispatch({ type: 'HIDE_SEND_MODAL' });
+    setSelected(new Set());
+  };
+
+  return (
+    <div className="modal-overlay" onClick={handleCancel}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <h3>SEND FILES</h3>
+
+        <div className="file-list">
+          {modal.files.map((f, i) => (
+            <div key={i} className="file-item">
+              <span className="file-name">{f.name}</span>
+              <span className="file-size">{formatSize(f.size)}</span>
+            </div>
+          ))}
+        </div>
+
+        <h4>SELECT RECIPIENTS</h4>
+        <div className="recipient-list">
+          {onlineAgents.length === 0 && <div className="empty">No online agents</div>}
+          {onlineAgents.map(agent => (
+            <label key={agent.id} className="recipient-item">
+              <input
+                type="checkbox"
+                checked={selected.has(agent.id)}
+                onChange={() => toggle(agent.id)}
+              />
+              <span className="dot online" />
+              <span className="nick" style={{ color: agentColor(agent.nick || agent.id) }}>
+                {agent.nick || agent.id}
+              </span>
+            </label>
+          ))}
+        </div>
+
+        <div className="modal-actions">
+          <button className="modal-btn cancel" onClick={handleCancel}>Cancel</button>
+          <button
+            className="modal-btn send"
+            onClick={handleSend}
+            disabled={selected.size === 0}
+          >
+            Send to {selected.size} agent{selected.size !== 1 ? 's' : ''}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FileOfferBanner({ state, dispatch, send }: { state: DashboardState; dispatch: React.Dispatch<DashboardAction>; send: WsSendFn }) {
+  const offers = Object.values(state.transfers).filter(
+    t => t.direction === 'in' && t.status === 'offered'
+  );
+  if (offers.length === 0) return null;
+
+  return (
+    <>
+      {offers.map(offer => (
+        <div key={offer.id} className="file-offer-banner">
+          <div className="offer-info">
+            <span className="offer-from" style={{ color: agentColor(offer.peerNick || offer.peer) }}>
+              {offer.peerNick || offer.peer}
+            </span>
+            <span> wants to send </span>
+            <span className="offer-files">
+              {offer.files.length} file{offer.files.length !== 1 ? 's' : ''} ({formatSize(offer.totalSize)})
+            </span>
+          </div>
+          <div className="offer-file-names">
+            {offer.files.map((f, i) => (
+              <span key={i} className="offer-file-tag">{f.name}</span>
+            ))}
+          </div>
+          <div className="offer-actions">
+            <button
+              className="offer-btn accept"
+              onClick={() => send({ type: 'file_respond', data: { transferId: offer.id, accept: true } })}
+            >
+              Accept
+            </button>
+            <button
+              className="offer-btn reject"
+              onClick={() => {
+                send({ type: 'file_respond', data: { transferId: offer.id, accept: false } });
+                const updated = { ...offer, status: 'rejected' as const };
+                dispatch({ type: 'TRANSFER_UPDATE', data: updated });
+              }}
+            >
+              Reject
+            </button>
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+function TransferBar({ state }: { state: DashboardState }) {
+  const active = Object.values(state.transfers).filter(
+    t => t.status === 'transferring'
+  );
+  if (active.length === 0) return null;
+
+  return (
+    <>
+      {active.map(t => (
+        <div key={t.id} className="transfer-bar">
+          <div className="transfer-info">
+            <span>{t.direction === 'out' ? 'Sending' : 'Receiving'}</span>
+            <span className="transfer-progress-text">{t.progress}%</span>
+          </div>
+          <div className="transfer-track">
+            <div className="transfer-fill" style={{ width: `${t.progress}%` }} />
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+function SaveModal({ state, dispatch, send }: { state: DashboardState; dispatch: React.Dispatch<DashboardAction>; send: WsSendFn }) {
+  const [dir, setDir] = useState('./downloads');
+  const [saving, setSaving] = useState(false);
+  const modal = state.saveModal;
+  if (!modal) return null;
+
+  const handleSave = () => {
+    if (!dir.trim()) return;
+    setSaving(true);
+    send({ type: 'file_save', data: { transferId: modal.transferId, directory: dir.trim() } });
+    // The HIDE_SAVE_MODAL will be dispatched when save_complete arrives
+  };
+
+  const handleCancel = () => {
+    dispatch({ type: 'HIDE_SAVE_MODAL' });
+  };
+
+  return (
+    <div className="modal-overlay" onClick={handleCancel}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <h3>SAVE FILES</h3>
+
+        <div className="file-list">
+          {modal.files.map((f, i) => (
+            <div key={i} className="file-item">
+              <span className="file-name">{f.name}</span>
+              <span className="file-size">{formatSize(f.size)}</span>
+            </div>
+          ))}
+        </div>
+
+        <label className="save-label">Extract to directory:</label>
+        <input
+          type="text"
+          className="save-input"
+          value={dir}
+          onChange={e => setDir(e.target.value)}
+          placeholder="./downloads"
+          disabled={saving}
+        />
+
+        <div className="modal-actions">
+          <button className="modal-btn cancel" onClick={handleCancel} disabled={saving}>Cancel</button>
+          <button
+            className="modal-btn send"
+            onClick={handleSave}
+            disabled={!dir.trim() || saving}
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const send = useWebSocket(dispatch);
@@ -1013,9 +1416,13 @@ export default function App() {
         <TopBar state={state} send={send} />
         <div className="main">
           <Sidebar state={state} dispatch={dispatch} />
-          <MessageFeed state={state} dispatch={dispatch} send={send} />
+          <DropZone state={state} dispatch={dispatch}>
+            <MessageFeed state={state} dispatch={dispatch} send={send} />
+          </DropZone>
           <RightPanel state={state} dispatch={dispatch} send={send} />
         </div>
+        <SendFileModal state={state} dispatch={dispatch} send={send} />
+        <SaveModal state={state} dispatch={dispatch} send={send} />
       </div>
     </DashboardContext.Provider>
   );

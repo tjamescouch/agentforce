@@ -2,7 +2,10 @@ import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import path from 'path';
+import crypto from 'crypto';
+import multer from 'multer';
 import nacl from 'tweetnacl';
 import tweetnaclUtil from 'tweetnacl-util';
 
@@ -207,6 +210,239 @@ interface DashboardMessage {
   type: string;
   data: Record<string, unknown>;
 }
+
+// ============ File Transfer Types ============
+
+const CHUNK_SIZE = 128 * 1024; // 128KB per chunk (well within 256KB AgentChat limit)
+const MAX_UPLOAD_SIZE = 50 * 1024 * 1024; // 50MB total
+const MAX_UPLOAD_FILES = 10;
+const TRANSFER_TTL = 30 * 60 * 1000; // 30 minute cleanup
+
+interface FileInfo {
+  name: string;
+  size: number;
+}
+
+interface FileTransferState {
+  id: string;
+  senderClientId: string;
+  recipients: string[];
+  archive: string;
+  sha256: string;
+  files: FileInfo[];
+  totalSize: number;
+  totalChunks: number;
+  status: 'uploaded' | 'offering' | 'transferring' | 'complete';
+  createdAt: number;
+}
+
+interface IncomingTransfer {
+  id: string;
+  senderId: string;
+  files: FileInfo[];
+  totalSize: number;
+  sha256: string;
+  totalChunks: number;
+  chunks: (string | null)[];
+  receivedCount: number;
+  status: 'offered' | 'accepted' | 'receiving' | 'complete' | 'rejected';
+  createdAt: number;
+}
+
+const outgoingTransfers = new Map<string, FileTransferState>();
+const incomingTransfers = new Map<string, IncomingTransfer>();
+
+// ============ Inline Slurp v4 Packer/Parser ============
+
+function slurpSha256(data: string | Buffer): string {
+  return crypto.createHash('sha256').update(data).digest('hex');
+}
+
+function humanSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function isBinaryBuffer(buf: Buffer): boolean {
+  const len = Math.min(buf.length, 8192);
+  for (let i = 0; i < len; i++) {
+    if (buf[i] === 0) return true;
+  }
+  return false;
+}
+
+function packFromBuffers(files: { name: string; content: Buffer }[]): string {
+  const entries = files.map(f => ({
+    name: f.name,
+    content: f.content,
+    binary: isBinaryBuffer(f.content),
+    size: f.content.length,
+    checksum: slurpSha256(f.content),
+  }));
+
+  const totalSize = entries.reduce((sum, e) => sum + e.size, 0);
+  const lines: string[] = [];
+
+  lines.push('# --- SLURP v4 ---');
+  lines.push('#');
+  lines.push(`# name: transfer`);
+  lines.push(`# files: ${entries.length}`);
+  lines.push(`# total: ${humanSize(totalSize)}`);
+  lines.push(`# created: ${new Date().toISOString()}`);
+  lines.push('#');
+
+  // Manifest
+  if (entries.length > 0) {
+    lines.push('# MANIFEST:');
+    const maxLen = Math.max(...entries.map(e => e.name.length), 4);
+    for (const e of entries) {
+      const size = humanSize(e.size).padStart(10);
+      const ck = `  sha256:${e.checksum.slice(0, 16)}`;
+      const bin = e.binary ? '  [binary]' : '';
+      lines.push(`#   ${e.name.padEnd(maxLen)}  ${size}${ck}${bin}`);
+    }
+    lines.push('#');
+  }
+
+  lines.push('');
+
+  // File bodies
+  for (const e of entries) {
+    if (e.binary) {
+      lines.push(`=== ${e.name} [binary] ===`);
+      const b64 = e.content.toString('base64');
+      const wrapped = b64.match(/.{1,76}/g)?.join('\n') || '';
+      lines.push(wrapped);
+    } else {
+      lines.push(`=== ${e.name} ===`);
+      const text = e.content.toString('utf-8');
+      lines.push(text.endsWith('\n') ? text.slice(0, -1) : text);
+    }
+    lines.push(`=== END ${e.name} ===`);
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+function unpackArchive(content: string, outputDir: string): string[] {
+  const lines = content.split('\n');
+  const extracted: string[] = [];
+
+  mkdirSync(outputDir, { recursive: true });
+
+  let i = 0;
+  while (i < lines.length) {
+    const binMatch = lines[i].match(/^=== (.+?) \[binary\] ===$/);
+    const textMatch = lines[i].match(/^=== (.+?) ===$/);
+
+    if (binMatch || textMatch) {
+      const binary = !!binMatch;
+      const filePath = binary ? binMatch![1] : textMatch![1];
+      if (filePath.startsWith('END ')) { i++; continue; }
+
+      const endMarker = `=== END ${filePath} ===`;
+      const contentLines: string[] = [];
+      i++;
+      while (i < lines.length && lines[i] !== endMarker) {
+        contentLines.push(lines[i]);
+        i++;
+      }
+
+      // Security: prevent path traversal
+      const safeName = filePath.replace(/\.\./g, '').replace(/^\//, '');
+      const dest = path.join(outputDir, safeName);
+      const destDir = path.dirname(dest);
+
+      // Ensure dest is within outputDir
+      if (!path.resolve(dest).startsWith(path.resolve(outputDir))) {
+        i++;
+        continue;
+      }
+
+      mkdirSync(destDir, { recursive: true });
+
+      if (binary) {
+        const b64 = contentLines.join('');
+        writeFileSync(dest, Buffer.from(b64, 'base64'));
+      } else {
+        const text = contentLines.join('\n');
+        writeFileSync(dest, text.endsWith('\n') ? text : text + '\n');
+      }
+
+      extracted.push(safeName);
+    }
+    i++;
+  }
+
+  return extracted;
+}
+
+function splitIntoChunks(text: string, chunkSize: number): string[] {
+  const chunks: string[] = [];
+  for (let i = 0; i < text.length; i += chunkSize) {
+    chunks.push(text.slice(i, i + chunkSize));
+  }
+  return chunks;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function sendChunks(client: DashboardClient, transferId: string, recipientId: string): Promise<void> {
+  const transfer = outgoingTransfers.get(transferId);
+  if (!transfer || !client.agentChatWs || client.agentChatWs.readyState !== WebSocket.OPEN) return;
+
+  const chunks = splitIntoChunks(transfer.archive, CHUNK_SIZE);
+  let delay = 100;
+
+  for (let i = 0; i < chunks.length; i++) {
+    if (!client.agentChatWs || client.agentChatWs.readyState !== WebSocket.OPEN) break;
+
+    const msg = JSON.stringify({ _ft: 'chunk', tid: transferId, idx: i, total: chunks.length, data: chunks[i] });
+    client.agentChatWs.send(JSON.stringify({ type: 'MSG', to: recipientId, content: msg }));
+
+    if (client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(JSON.stringify({
+        type: 'transfer_progress',
+        data: { transferId, recipient: recipientId, sent: i + 1, total: chunks.length }
+      }));
+    }
+
+    await sleep(delay);
+    delay = Math.min(delay * 2, 2000);
+  }
+
+  // Send complete
+  const completeMsg = JSON.stringify({ _ft: 'complete', tid: transferId, sha256: transfer.sha256 });
+  client.agentChatWs.send(JSON.stringify({ type: 'MSG', to: recipientId, content: completeMsg }));
+  transfer.status = 'complete';
+
+  if (client.ws.readyState === WebSocket.OPEN) {
+    client.ws.send(JSON.stringify({
+      type: 'transfer_sent',
+      data: { transferId, recipient: recipientId }
+    }));
+  }
+}
+
+// Sanitize uploaded filename
+function sanitizeFilename(name: string): string {
+  return path.basename(name).replace(/[<>&"']/g, '').replace(/\.\./g, '');
+}
+
+// Cleanup stale transfers
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, t] of outgoingTransfers) {
+    if (now - t.createdAt > TRANSFER_TTL) outgoingTransfers.delete(id);
+  }
+  for (const [id, t] of incomingTransfers) {
+    if (now - t.createdAt > TRANSFER_TTL) incomingTransfers.delete(id);
+  }
+}, 5 * 60 * 1000);
 
 // ============ Agent Name Overrides ============
 
@@ -819,6 +1055,18 @@ function handlePerSessionMessage(client: DashboardClient, msg: AgentChatMsg): vo
       break;
 
     case 'MSG':
+      // Check if this is a file transfer protocol DM
+      if (msg.content && msg.from) {
+        try {
+          const parsed = JSON.parse(msg.content);
+          if (parsed._ft) {
+            handleFileTransferDM(client, msg.from, parsed);
+            break;
+          }
+        } catch {
+          // Not JSON, treat as regular message
+        }
+      }
       // Feed into global state so all dashboard clients see it via broadcast
       if (msg.to) {
         handleIncomingMessage(msg);
@@ -837,6 +1085,142 @@ function handlePerSessionMessage(client: DashboardClient, msg: AgentChatMsg): vo
 
     case 'PONG':
       break;
+  }
+}
+
+function handleFileTransferDM(client: DashboardClient, fromId: string, ft: Record<string, unknown>): void {
+  const tid = ft.tid as string;
+  if (!tid) return;
+
+  switch (ft._ft) {
+    case 'offer': {
+      const incoming: IncomingTransfer = {
+        id: tid,
+        senderId: fromId,
+        files: ft.files as FileInfo[],
+        totalSize: ft.totalSize as number,
+        sha256: ft.sha256 as string,
+        totalChunks: ft.chunks as number,
+        chunks: new Array(ft.chunks as number).fill(null),
+        receivedCount: 0,
+        status: 'offered',
+        createdAt: Date.now()
+      };
+      incomingTransfers.set(tid, incoming);
+
+      if (client.ws.readyState === WebSocket.OPEN) {
+        const senderAgent = state.agents.get(fromId);
+        client.ws.send(JSON.stringify({
+          type: 'file_offer',
+          data: {
+            transferId: tid,
+            from: fromId,
+            fromNick: ft.senderNick || senderAgent?.nick || fromId,
+            files: incoming.files,
+            totalSize: incoming.totalSize,
+            chunks: incoming.totalChunks
+          }
+        }));
+      }
+      console.log(`Transfer ${tid}: offer from ${fromId}, ${incoming.files.length} files, ${humanSize(incoming.totalSize)}`);
+      break;
+    }
+
+    case 'accept': {
+      const transfer = outgoingTransfers.get(tid);
+      if (transfer) {
+        transfer.status = 'transferring';
+        console.log(`Transfer ${tid}: accepted by ${fromId}, starting chunk send`);
+        sendChunks(client, tid, fromId);
+      }
+      break;
+    }
+
+    case 'reject': {
+      const transfer = outgoingTransfers.get(tid);
+      if (transfer && client.ws.readyState === WebSocket.OPEN) {
+        client.ws.send(JSON.stringify({
+          type: 'transfer_update',
+          data: { transferId: tid, status: 'rejected', peer: fromId }
+        }));
+      }
+      console.log(`Transfer ${tid}: rejected by ${fromId}`);
+      break;
+    }
+
+    case 'chunk': {
+      const incoming = incomingTransfers.get(tid);
+      if (!incoming) break;
+
+      const idx = ft.idx as number;
+      const total = ft.total as number;
+      const data = ft.data as string;
+
+      if (idx >= 0 && idx < incoming.chunks.length && incoming.chunks[idx] === null) {
+        incoming.chunks[idx] = data;
+        incoming.receivedCount++;
+        incoming.status = 'receiving';
+      }
+
+      if (client.ws.readyState === WebSocket.OPEN) {
+        client.ws.send(JSON.stringify({
+          type: 'transfer_progress',
+          data: {
+            transferId: tid,
+            received: incoming.receivedCount,
+            total,
+            progress: Math.round((incoming.receivedCount / total) * 100)
+          }
+        }));
+      }
+      break;
+    }
+
+    case 'complete': {
+      const incoming = incomingTransfers.get(tid);
+      if (!incoming) break;
+
+      const archive = incoming.chunks.join('');
+      const actualHash = slurpSha256(archive);
+      const expectedHash = ft.sha256 as string || incoming.sha256;
+      const ok = actualHash === expectedHash;
+
+      incoming.status = 'complete';
+
+      // Send ACK back to sender
+      if (client.agentChatWs && client.agentChatWs.readyState === WebSocket.OPEN) {
+        const ackMsg = JSON.stringify({ _ft: 'ack', tid, ok, error: ok ? undefined : 'hash mismatch' });
+        client.agentChatWs.send(JSON.stringify({ type: 'MSG', to: fromId, content: ackMsg }));
+      }
+
+      if (client.ws.readyState === WebSocket.OPEN) {
+        client.ws.send(JSON.stringify({
+          type: 'transfer_complete',
+          data: {
+            transferId: tid,
+            verified: ok,
+            files: incoming.files,
+            totalSize: incoming.totalSize
+          }
+        }));
+      }
+      console.log(`Transfer ${tid}: complete, hash ${ok ? 'OK' : 'MISMATCH'}`);
+      break;
+    }
+
+    case 'ack': {
+      if (client.ws.readyState === WebSocket.OPEN) {
+        client.ws.send(JSON.stringify({
+          type: 'transfer_update',
+          data: {
+            transferId: tid,
+            status: ft.ok ? 'verified' : 'hash_mismatch',
+            peer: fromId
+          }
+        }));
+      }
+      break;
+    }
   }
 }
 
@@ -1003,6 +1387,110 @@ function handleDashboardMessage(client: DashboardClient, msg: DashboardMessage):
       }
       break;
     }
+
+    case 'file_send': {
+      if (client.mode === 'lurk') {
+        client.ws.send(JSON.stringify({ type: 'error', data: { code: 'LURK_MODE', message: 'Cannot send files in lurk mode' } }));
+        return;
+      }
+      if (!client.agentChatWs || client.agentChatWs.readyState !== WebSocket.OPEN) {
+        client.ws.send(JSON.stringify({ type: 'error', data: { code: 'NO_SESSION', message: 'No AgentChat connection' } }));
+        return;
+      }
+      const { transferId, recipients } = msg.data as { transferId: string; recipients: string[] };
+      const transfer = outgoingTransfers.get(transferId);
+      if (!transfer) {
+        client.ws.send(JSON.stringify({ type: 'error', data: { code: 'INVALID_TRANSFER', message: 'Transfer not found' } }));
+        return;
+      }
+      transfer.senderClientId = client.id;
+      transfer.recipients = recipients;
+      transfer.status = 'offering';
+
+      for (const recipientId of recipients) {
+        const offerMsg = JSON.stringify({
+          _ft: 'offer',
+          tid: transferId,
+          files: transfer.files,
+          totalSize: transfer.totalSize,
+          sha256: transfer.sha256,
+          chunks: transfer.totalChunks,
+          senderNick: client.nick || client.agentId || 'unknown'
+        });
+        const sig = client.identity ? signMessageWithIdentity(offerMsg, client.identity) : null;
+        client.agentChatWs.send(JSON.stringify({ type: 'MSG', to: recipientId, content: offerMsg, sig }));
+      }
+
+      client.ws.send(JSON.stringify({ type: 'offer_sent', data: { transferId, recipients } }));
+      break;
+    }
+
+    case 'file_respond': {
+      if (client.mode === 'lurk') {
+        client.ws.send(JSON.stringify({ type: 'error', data: { code: 'LURK_MODE', message: 'Cannot respond in lurk mode' } }));
+        return;
+      }
+      if (!client.agentChatWs || client.agentChatWs.readyState !== WebSocket.OPEN) {
+        client.ws.send(JSON.stringify({ type: 'error', data: { code: 'NO_SESSION', message: 'No AgentChat connection' } }));
+        return;
+      }
+      const { transferId: tid, accept } = msg.data as { transferId: string; accept: boolean };
+      const incoming = incomingTransfers.get(tid);
+      if (!incoming) {
+        client.ws.send(JSON.stringify({ type: 'error', data: { code: 'INVALID_TRANSFER', message: 'Transfer not found' } }));
+        return;
+      }
+
+      if (accept) {
+        incoming.status = 'accepted';
+        const acceptMsg = JSON.stringify({ _ft: 'accept', tid });
+        client.agentChatWs.send(JSON.stringify({ type: 'MSG', to: incoming.senderId, content: acceptMsg }));
+      } else {
+        incoming.status = 'rejected';
+        const rejectMsg = JSON.stringify({ _ft: 'reject', tid });
+        client.agentChatWs.send(JSON.stringify({ type: 'MSG', to: incoming.senderId, content: rejectMsg }));
+        incomingTransfers.delete(tid);
+      }
+
+      client.ws.send(JSON.stringify({
+        type: 'transfer_update',
+        data: { transferId: tid, status: incoming.status }
+      }));
+      break;
+    }
+
+    case 'file_save': {
+      const { transferId: saveTid, directory } = msg.data as { transferId: string; directory: string };
+      const transfer = incomingTransfers.get(saveTid);
+      if (!transfer || transfer.status !== 'complete') {
+        client.ws.send(JSON.stringify({ type: 'error', data: { code: 'INVALID_TRANSFER', message: 'Transfer not ready' } }));
+        return;
+      }
+
+      // Security: normalize and validate directory
+      const resolvedDir = path.resolve(directory);
+      if (directory.includes('..')) {
+        client.ws.send(JSON.stringify({ type: 'error', data: { code: 'INVALID_PATH', message: 'Path traversal not allowed' } }));
+        return;
+      }
+
+      try {
+        const archive = transfer.chunks.join('');
+        const extractedFiles = unpackArchive(archive, resolvedDir);
+        client.ws.send(JSON.stringify({
+          type: 'save_complete',
+          data: { transferId: saveTid, directory: resolvedDir, files: extractedFiles }
+        }));
+        incomingTransfers.delete(saveTid);
+        console.log(`Transfer ${saveTid}: extracted ${extractedFiles.length} files to ${resolvedDir}`);
+      } catch (e) {
+        client.ws.send(JSON.stringify({
+          type: 'error',
+          data: { code: 'EXTRACT_FAILED', message: `Failed to extract: ${(e as Error).message}` }
+        }));
+      }
+      break;
+    }
   }
 }
 
@@ -1040,6 +1528,61 @@ app.get('/api/health', (_req: Request, res: Response) => {
     status: 'ok',
     connected: state.connected
   });
+});
+
+// File upload endpoint
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024, files: MAX_UPLOAD_FILES }
+});
+
+app.post('/api/upload', upload.array('files', MAX_UPLOAD_FILES), (req: Request, res: Response) => {
+  const files = req.files as Express.Multer.File[] | undefined;
+  if (!files || files.length === 0) {
+    res.status(400).json({ error: 'No files uploaded' });
+    return;
+  }
+
+  const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+  if (totalSize > MAX_UPLOAD_SIZE) {
+    res.status(413).json({ error: `Total size ${humanSize(totalSize)} exceeds ${humanSize(MAX_UPLOAD_SIZE)} limit` });
+    return;
+  }
+
+  const fileEntries = files.map(f => ({
+    name: sanitizeFilename(f.originalname),
+    content: f.buffer
+  }));
+
+  const archive = packFromBuffers(fileEntries);
+  const archiveHash = slurpSha256(archive);
+  const totalChunks = Math.ceil(archive.length / CHUNK_SIZE);
+  const transferId = crypto.randomBytes(8).toString('hex');
+
+  const fileInfos = fileEntries.map(f => ({ name: f.name, size: f.content.length }));
+
+  outgoingTransfers.set(transferId, {
+    id: transferId,
+    senderClientId: '', // Will be set when file_send is called
+    recipients: [],
+    archive,
+    sha256: archiveHash,
+    files: fileInfos,
+    totalSize,
+    totalChunks,
+    status: 'uploaded',
+    createdAt: Date.now()
+  });
+
+  res.json({
+    transferId,
+    files: fileInfos,
+    totalSize,
+    sha256: archiveHash,
+    chunks: totalChunks
+  });
+
+  console.log(`Upload: ${files.length} files, ${humanSize(totalSize)}, transfer ${transferId}`);
 });
 
 // Static files (for built React app)
