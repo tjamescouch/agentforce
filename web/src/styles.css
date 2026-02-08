@@ -116,7 +116,8 @@ body {
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
+  flex-shrink: 0;
 }
 
 /* Resize handles */
@@ -149,7 +150,6 @@ body {
 }
 
 .list {
-  max-height: 200px;
   overflow-y: auto;
 }
 
@@ -368,6 +368,7 @@ body {
   border-left: 1px solid var(--border);
   padding: 16px;
   overflow-y: auto;
+  flex-shrink: 0;
 }
 
 .right-panel h3 {
