@@ -271,7 +271,7 @@ interface DashboardMessage {
 
 // ============ File Transfer Types ============
 
-const CHUNK_SIZE = 128 * 1024; // 128KB per chunk (well within 256KB AgentChat limit)
+const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB per chunk (uses FILE_CHUNK type with 2MB wire limit)
 const MAX_UPLOAD_SIZE = 50 * 1024 * 1024; // 50MB total
 const MAX_UPLOAD_FILES = 10;
 const TRANSFER_TTL = 30 * 60 * 1000; // 30 minute cleanup
@@ -437,6 +437,47 @@ function unpackArchive(content: string, outputDir: string): string[] {
   return extracted;
 }
 
+/**
+ * Extract a single file from a SLURP archive by index, returning name + buffer.
+ */
+function extractFileFromArchive(content: string, fileIndex: number): { name: string; data: Buffer } | null {
+  const lines = content.split('\n');
+  let currentIndex = 0;
+  let i = 0;
+
+  while (i < lines.length) {
+    const binMatch = lines[i].match(/^=== (.+?) \[binary\] ===$/);
+    const textMatch = lines[i].match(/^=== (.+?) ===$/);
+
+    if (binMatch || textMatch) {
+      const binary = !!binMatch;
+      const filePath = binary ? binMatch![1] : textMatch![1];
+      if (filePath.startsWith('END ')) { i++; continue; }
+
+      const endMarker = `=== END ${filePath} ===`;
+      const contentLines: string[] = [];
+      i++;
+      while (i < lines.length && lines[i] !== endMarker) {
+        contentLines.push(lines[i]);
+        i++;
+      }
+
+      if (currentIndex === fileIndex) {
+        const safeName = path.basename(filePath.replace(/\.\./g, ''));
+        const data = binary
+          ? Buffer.from(contentLines.join(''), 'base64')
+          : Buffer.from(contentLines.join('\n'));
+        return { name: safeName, data };
+      }
+
+      currentIndex++;
+    }
+    i++;
+  }
+
+  return null;
+}
+
 function splitIntoChunks(text: string, chunkSize: number): string[] {
   const chunks: string[] = [];
   for (let i = 0; i < text.length; i += chunkSize) {
@@ -454,13 +495,12 @@ async function sendChunks(client: DashboardClient, transferId: string, recipient
   if (!transfer || !client.agentChatWs || client.agentChatWs.readyState !== WebSocket.OPEN) return;
 
   const chunks = splitIntoChunks(transfer.archive, CHUNK_SIZE);
-  let delay = 100;
 
   for (let i = 0; i < chunks.length; i++) {
     if (!client.agentChatWs || client.agentChatWs.readyState !== WebSocket.OPEN) break;
 
     const msg = JSON.stringify({ _ft: 'chunk', tid: transferId, idx: i, total: chunks.length, data: chunks[i] });
-    client.agentChatWs.send(JSON.stringify({ type: 'MSG', to: recipientId, content: msg }));
+    client.agentChatWs.send(JSON.stringify({ type: 'FILE_CHUNK', to: recipientId, content: msg }));
 
     if (client.ws.readyState === WebSocket.OPEN) {
       client.ws.send(JSON.stringify({
@@ -469,8 +509,7 @@ async function sendChunks(client: DashboardClient, transferId: string, recipient
       }));
     }
 
-    await sleep(delay);
-    delay = Math.min(delay * 2, 2000);
+    await sleep(200); // Fixed 200ms throttle (~5 chunks/sec)
   }
 
   // Send complete
@@ -1157,7 +1196,7 @@ function handlePerSessionMessage(client: DashboardClient, msg: AgentChatMsg): vo
       break;
 
     case 'MSG':
-      // Check if this is a file transfer protocol DM
+      // Check if this is a file transfer protocol DM (offer/accept/reject/complete/ack)
       if (msg.content && msg.from) {
         try {
           const parsed = JSON.parse(msg.content);
@@ -1172,6 +1211,20 @@ function handlePerSessionMessage(client: DashboardClient, msg: AgentChatMsg): vo
       // Feed into global state so all dashboard clients see it via broadcast
       if (msg.to) {
         handleIncomingMessage(msg);
+      }
+      break;
+
+    case 'FILE_CHUNK':
+      // File transfer data chunks arrive via dedicated FILE_CHUNK type
+      if (msg.content && msg.from) {
+        try {
+          const parsed = JSON.parse(msg.content);
+          if (parsed._ft) {
+            handleFileTransferDM(client, msg.from, parsed);
+          }
+        } catch {
+          // Not valid file transfer JSON
+        }
       }
       break;
 
@@ -1305,6 +1358,25 @@ function handleFileTransferDM(client: DashboardClient, fromId: string, ft: Recor
             totalSize: incoming.totalSize
           }
         }));
+
+        // Inject file bubble message into the DM conversation
+        if (ok) {
+          const fileMsg: ChatMessage = {
+            id: `file-${tid}`,
+            from: fromId,
+            fromNick: getAgentName(fromId),
+            to: `@${client.agentId}`,
+            content: JSON.stringify({
+              _file: true,
+              transferId: tid,
+              files: incoming.files,
+              totalSize: incoming.totalSize,
+            }),
+            ts: Date.now(),
+            isProposal: false
+          };
+          broadcastToDashboards({ type: 'message', data: fileMsg });
+        }
       }
       console.log(`Transfer ${tid}: complete, hash ${ok ? 'OK' : 'MISMATCH'}`);
       break;
@@ -1320,6 +1392,28 @@ function handleFileTransferDM(client: DashboardClient, fromId: string, ft: Recor
             peer: fromId
           }
         }));
+
+        // Inject file bubble on sender side too
+        if (ft.ok) {
+          const transfer = outgoingTransfers.get(tid);
+          if (transfer && client.agentId) {
+            const fileMsg: ChatMessage = {
+              id: `file-${tid}`,
+              from: `@${client.agentId}`,
+              fromNick: client.nick || client.agentId || 'unknown',
+              to: fromId,
+              content: JSON.stringify({
+                _file: true,
+                transferId: tid,
+                files: transfer.files,
+                totalSize: transfer.totalSize,
+              }),
+              ts: Date.now(),
+              isProposal: false
+            };
+            broadcastToDashboards({ type: 'message', data: fileMsg });
+          }
+        }
       }
       break;
     }
@@ -1756,6 +1850,50 @@ app.post('/api/upload', upload.array('files', MAX_UPLOAD_FILES), (req: Request, 
   });
 
   console.log(`Upload: ${files.length} files, ${humanSize(totalSize)}, transfer ${transferId}`);
+});
+
+// Download a file from a completed incoming transfer
+app.get('/api/download/:transferId/:fileIndex', (req: Request, res: Response) => {
+  const { transferId, fileIndex } = req.params;
+  const idx = parseInt(fileIndex, 10);
+
+  if (isNaN(idx) || idx < 0) {
+    return res.status(400).json({ error: 'Invalid file index' });
+  }
+
+  const transfer = incomingTransfers.get(transferId);
+  if (!transfer) {
+    // Also check outgoing transfers (sender may want to download too)
+    const outgoing = outgoingTransfers.get(transferId);
+    if (!outgoing) {
+      return res.status(404).json({ error: 'Transfer not found' });
+    }
+    // Extract from outgoing archive
+    const file = extractFileFromArchive(outgoing.archive, idx);
+    if (!file) {
+      return res.status(404).json({ error: 'File not found in archive' });
+    }
+    res.setHeader('Content-Disposition', `attachment; filename="${file.name}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Length', file.data.length);
+    return res.send(file.data);
+  }
+
+  if (transfer.status !== 'complete') {
+    return res.status(409).json({ error: 'Transfer not yet complete' });
+  }
+
+  // Reassemble archive from chunks
+  const archive = transfer.chunks.join('');
+  const file = extractFileFromArchive(archive, idx);
+  if (!file) {
+    return res.status(404).json({ error: 'File not found in archive' });
+  }
+
+  res.setHeader('Content-Disposition', `attachment; filename="${file.name}"`);
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Length', file.data.length);
+  return res.send(file.data);
 });
 
 // ============ Anthropic API Token Proxy ============

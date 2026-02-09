@@ -126,6 +126,8 @@ interface LogEntry {
 
 interface DashboardState {
   connected: boolean;
+  connectionStatus: 'connecting' | 'syncing' | 'ready' | 'error' | 'disconnected';
+  connectionError: string | null;
   mode: string;
   agents: Record<string, Agent>;
   channels: Record<string, Channel>;
@@ -139,12 +141,14 @@ interface DashboardState {
   rightPanel: string;
   dashboardAgent: DashboardAgent | null;
   unreadCounts: Record<string, number>;
+  activityCounts: Record<string, number>;
   typingAgents: Record<string, number>;
   transfers: Record<string, FileTransferUI>;
   sendModal: { transferId: string; files: { name: string; size: number }[] } | null;
   saveModal: { transferId: string; files: { name: string; size: number }[] } | null;
   logs: LogEntry[];
   logsOpen: boolean;
+  pulseOpen: boolean;
 }
 
 type DashboardAction =
@@ -171,7 +175,10 @@ type DashboardAction =
   | { type: 'LOG'; data: LogEntry }
   | { type: 'LOG_HISTORY'; data: LogEntry[] }
   | { type: 'TOGGLE_LOGS' }
-  | { type: 'CLEAR_LOGS' };
+  | { type: 'CLEAR_LOGS' }
+  | { type: 'TOGGLE_PULSE' }
+  | { type: 'CONNECTION_ERROR'; error: string }
+  | { type: 'CONNECTING' };
 
 interface StateSyncPayload {
   agents: Agent[];
@@ -225,6 +232,8 @@ const persistMessages = (messages: Record<string, Message[]>) => {
 
 const initialState: DashboardState = {
   connected: false,
+  connectionStatus: 'connecting',
+  connectionError: null,
   mode: savedMode,
   agents: {},
   channels: {},
@@ -238,12 +247,14 @@ const initialState: DashboardState = {
   rightPanel: 'proposals',
   dashboardAgent: null,
   unreadCounts: {},
+  activityCounts: {},
   typingAgents: {},
   transfers: {},
   sendModal: null,
   saveModal: null,
   logs: [],
-  logsOpen: false
+  logsOpen: false,
+  pulseOpen: false
 };
 
 function reducer(state: DashboardState, action: DashboardAction): DashboardState {
@@ -264,6 +275,8 @@ function reducer(state: DashboardState, action: DashboardAction): DashboardState
       return {
         ...state,
         connected: true,
+        connectionStatus: 'ready',
+        connectionError: null,
         agents: Object.fromEntries(action.data.agents.map(a => [a.id, a])),
         channels: Object.fromEntries(action.data.channels.map(c => [c.name, c])),
         messages: mergedMessages,
@@ -275,9 +288,9 @@ function reducer(state: DashboardState, action: DashboardAction): DashboardState
       };
     }
     case 'CONNECTED':
-      return { ...state, connected: true, dashboardAgent: action.data?.dashboardAgent ?? state.dashboardAgent };
+      return { ...state, connected: true, connectionStatus: 'syncing', connectionError: null, dashboardAgent: action.data?.dashboardAgent ?? state.dashboardAgent };
     case 'DISCONNECTED':
-      return { ...state, connected: false };
+      return { ...state, connected: false, connectionStatus: state.connectionStatus === 'ready' ? 'disconnected' : state.connectionStatus };
     case 'MESSAGE': {
       const channel = action.data.to;
       const existingMsgs = state.messages[channel] || [];
@@ -297,11 +310,30 @@ function reducer(state: DashboardState, action: DashboardAction): DashboardState
         : state.unreadCounts;
       return { ...state, messages: newMessages, unreadCounts: newUnread };
     }
-    case 'AGENT_UPDATE':
+    case 'AGENT_UPDATE': {
+      const prev = state.agents[action.data.id];
+      const prevChannels = new Set(prev?.channels || []);
+      const newChannels = new Set(action.data.channels || []);
+      const newActivity = { ...state.activityCounts };
+      if (action.data.event === 'joined') {
+        for (const ch of newChannels) {
+          if (!prevChannels.has(ch) && ch !== state.selectedChannel) {
+            newActivity[ch] = (newActivity[ch] || 0) + 1;
+          }
+        }
+      } else if (action.data.event === 'left') {
+        for (const ch of prevChannels) {
+          if (!newChannels.has(ch) && ch !== state.selectedChannel) {
+            newActivity[ch] = (newActivity[ch] || 0) + 1;
+          }
+        }
+      }
       return {
         ...state,
-        agents: { ...state.agents, [action.data.id]: action.data }
+        agents: { ...state.agents, [action.data.id]: action.data },
+        activityCounts: newActivity
       };
+    }
     case 'PROPOSAL_UPDATE':
       return {
         ...state,
@@ -324,7 +356,9 @@ function reducer(state: DashboardState, action: DashboardAction): DashboardState
     case 'SELECT_CHANNEL': {
       const clearedUnread = { ...state.unreadCounts };
       delete clearedUnread[action.channel];
-      return { ...state, selectedChannel: action.channel, unreadCounts: clearedUnread };
+      const clearedActivity = { ...state.activityCounts };
+      delete clearedActivity[action.channel];
+      return { ...state, selectedChannel: action.channel, unreadCounts: clearedUnread, activityCounts: clearedActivity };
     }
     case 'SELECT_AGENT':
       return { ...state, selectedAgent: action.agent, rightPanel: 'detail' };
@@ -362,6 +396,12 @@ function reducer(state: DashboardState, action: DashboardAction): DashboardState
       return { ...state, logsOpen: !state.logsOpen };
     case 'CLEAR_LOGS':
       return { ...state, logs: [] };
+    case 'TOGGLE_PULSE':
+      return { ...state, pulseOpen: !state.pulseOpen };
+    case 'CONNECTION_ERROR':
+      return { ...state, connectionStatus: 'error', connectionError: action.error };
+    case 'CONNECTING':
+      return { ...state, connectionStatus: 'connecting', connectionError: null };
     default:
       return state;
   }
@@ -399,11 +439,15 @@ function useWebSocket(dispatch: React.Dispatch<DashboardAction>): WsSendFn {
       ? 'ws://localhost:3000/ws'
       : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
 
+    let reconnectDelay = 2000;
+
     function connect() {
+      dispatch({ type: 'CONNECTING' });
       ws.current = new WebSocket(wsUrl);
 
       ws.current.onopen = () => {
         console.log('WebSocket connected');
+        reconnectDelay = 2000; // reset on success
         const savedMode = localStorage.getItem('dashboardMode');
         if (savedMode && savedMode !== 'lurk') {
           ws.current!.send(JSON.stringify({ type: 'set_mode', data: { mode: savedMode } }));
@@ -523,14 +567,21 @@ function useWebSocket(dispatch: React.Dispatch<DashboardAction>): WsSendFn {
             console.error('Server error:', msg.data?.code, msg.data?.message);
             if (msg.data?.code === 'LURK_MODE') {
               dispatch({ type: 'SET_MODE', mode: 'lurk' });
+            } else if (msg.data?.code === 'NOT_ALLOWED') {
+              dispatch({ type: 'CONNECTION_ERROR', error: msg.data?.message || 'Connection rejected by server' });
             }
             break;
         }
       };
 
+      ws.current.onerror = () => {
+        dispatch({ type: 'CONNECTION_ERROR', error: 'Connection failed — is the server running?' });
+      };
+
       ws.current.onclose = () => {
         dispatch({ type: 'DISCONNECTED' });
-        setTimeout(connect, 2000);
+        setTimeout(connect, reconnectDelay);
+        reconnectDelay = Math.min(reconnectDelay * 1.5, 15000);
       };
 
       setSend(() => (msg: Record<string, unknown>) => {
@@ -604,6 +655,12 @@ function TopBar({ state, dispatch, send }: { state: DashboardState; dispatch: Re
           <span className="dashboard-nick">as {state.dashboardAgent.nick}</span>
         )}
         <button
+          className={`pulse-btn ${state.pulseOpen ? 'active' : ''}`}
+          onClick={() => dispatch({ type: 'TOGGLE_PULSE' })}
+        >
+          PULSE
+        </button>
+        <button
           className={`logs-btn ${state.logsOpen ? 'active' : ''}`}
           onClick={() => dispatch({ type: 'TOGGLE_LOGS' })}
         >
@@ -666,6 +723,9 @@ function Sidebar({ state, dispatch, sidebarWidth }: { state: DashboardState; dis
               onClick={() => dispatch({ type: 'SELECT_CHANNEL', channel: channel.name })}
             >
               <span className="channel-name">{channel.name}</span>
+              {state.activityCounts[channel.name] > 0 && (
+                <span className="activity-badge" title="Join/leave activity">{state.activityCounts[channel.name]}</span>
+              )}
               {state.unreadCounts[channel.name] > 0 && (
                 <span className="unread-badge">{state.unreadCounts[channel.name]}</span>
               )}
@@ -750,6 +810,14 @@ function MessageFeed({ state, dispatch, send }: { state: DashboardState; dispatc
   const handleSend = (e: FormEvent) => {
     e.preventDefault();
     if (!input.trim() || state.mode === 'lurk') return;
+    if (input.trim().startsWith('/nick ')) {
+      const newNick = input.trim().slice(6).trim();
+      if (newNick) {
+        send({ type: 'set_nick', data: { nick: newNick } });
+      }
+      setInput('');
+      return;
+    }
     send({ type: 'send_message', data: { to: state.selectedChannel, content: input } });
     setInput('');
   };
@@ -770,17 +838,46 @@ function MessageFeed({ state, dispatch, send }: { state: DashboardState; dispatc
       <FileOfferBanner state={state} dispatch={dispatch} send={send} />
       <TransferBar state={state} />
       <div className="messages" ref={messagesContainerRef} onScroll={handleScroll}>
-        {messages.map((msg, i) => (
-          <div key={msg.id || i} className="message">
-            <span className="time">[{formatTime(msg.ts)}]</span>
-            <span className="from" style={{ color: agentColor(state.agents[msg.from]?.nick || msg.fromNick || msg.from) }}>
-              &lt;{state.agents[msg.from]?.nick || msg.fromNick || msg.from}&gt;
-            </span>
-            <span className="agent-id">{msg.from}</span>
-            {state.agents[msg.from]?.verified && <span className="verified-badge">&#x2713;</span>}
-            <span className="content">{msg.content}</span>
-          </div>
-        ))}
+        {messages.map((msg, i) => {
+          let fileData: { _file: true; transferId: string; files: { name: string; size: number }[]; totalSize: number } | null = null;
+          try {
+            const parsed = JSON.parse(msg.content);
+            if (parsed._file) fileData = parsed;
+          } catch { /* not JSON */ }
+
+          return (
+            <div key={msg.id || i} className="message">
+              <span className="time">[{formatTime(msg.ts)}]</span>
+              <span className="from" style={{ color: agentColor(state.agents[msg.from]?.nick || msg.fromNick || msg.from) }}>
+                &lt;{state.agents[msg.from]?.nick || msg.fromNick || msg.from}&gt;
+              </span>
+              <span className="agent-id">{msg.from}</span>
+              {state.agents[msg.from]?.verified && <span className="verified-badge">&#x2713;</span>}
+              {fileData ? (
+                <span className="file-bubble">
+                  <span className="file-icon">&#x1F4CE;</span>
+                  <span className="file-bubble-info">
+                    {fileData.files.map((f, fi) => (
+                      <a
+                        key={fi}
+                        className="file-bubble-link"
+                        href={`/api/download/${fileData!.transferId}/${fi}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {f.name}
+                      </a>
+                    ))}
+                    <span className="file-bubble-size">({formatSize(fileData.totalSize)})</span>
+                  </span>
+                </span>
+              ) : (
+                <span className="content">{msg.content}</span>
+              )}
+            </div>
+          );
+        })}
         <div ref={messagesEndRef} />
       </div>
       {!isAtBottom && (
@@ -1488,6 +1585,502 @@ function SaveModal({ state, dispatch, send }: { state: DashboardState; dispatch:
   );
 }
 
+// ============ Network Pulse ============
+
+interface PulseNode {
+  id: string;
+  label: string;
+  type: 'agent' | 'channel';
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  radius: number;
+  color: string;
+  online?: boolean;
+  verified?: boolean;
+  memberCount?: number;
+}
+
+interface PulseEdge {
+  source: string;
+  target: string;
+}
+
+interface Particle {
+  edge: PulseEdge;
+  progress: number;
+  speed: number;
+  color: string;
+}
+
+function NetworkPulse({ state, dispatch }: { state: DashboardState; dispatch: React.Dispatch<DashboardAction> }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const nodesRef = useRef<Map<string, PulseNode>>(new Map());
+  const edgesRef = useRef<PulseEdge[]>([]);
+  const particlesRef = useRef<Particle[]>([]);
+  const animRef = useRef<number>(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const hoveredRef = useRef<string | null>(null);
+  const dragRef = useRef<{ nodeId: string; offsetX: number; offsetY: number } | null>(null);
+  const lastMessageCountRef = useRef<number>(0);
+
+  // Build graph from state
+  useEffect(() => {
+    const nodes = nodesRef.current;
+    const agents = Object.values(state.agents);
+    const channels = Object.values(state.channels);
+
+    // Track which nodes still exist
+    const activeIds = new Set<string>();
+
+    // Agent nodes
+    for (const agent of agents) {
+      activeIds.add(agent.id);
+      const existing = nodes.get(agent.id);
+      const msgCount = Object.values(state.messages).flat().filter(m => m.from === agent.id).length;
+      const radius = Math.max(8, Math.min(24, 8 + msgCount * 0.5));
+
+      if (existing) {
+        existing.label = agent.nick || agent.id;
+        existing.radius = radius;
+        existing.color = agentColor(agent.nick || agent.id);
+        existing.online = agent.online;
+        existing.verified = agent.verified;
+      } else {
+        const canvas = canvasRef.current;
+        const w = canvas?.width || 800;
+        const h = canvas?.height || 600;
+        nodes.set(agent.id, {
+          id: agent.id,
+          label: agent.nick || agent.id,
+          type: 'agent',
+          x: w / 2 + (Math.random() - 0.5) * w * 0.6,
+          y: h / 2 + (Math.random() - 0.5) * h * 0.6,
+          vx: 0,
+          vy: 0,
+          radius,
+          color: agentColor(agent.nick || agent.id),
+          online: agent.online,
+          verified: agent.verified,
+        });
+      }
+    }
+
+    // Channel nodes
+    for (const channel of channels) {
+      activeIds.add(channel.name);
+      const existing = nodes.get(channel.name);
+      const radius = Math.max(12, Math.min(30, 12 + (channel.members?.length || 0) * 2));
+
+      if (existing) {
+        existing.radius = radius;
+        existing.memberCount = channel.members?.length || 0;
+      } else {
+        const canvas = canvasRef.current;
+        const w = canvas?.width || 800;
+        const h = canvas?.height || 600;
+        nodes.set(channel.name, {
+          id: channel.name,
+          label: channel.name,
+          type: 'channel',
+          x: w / 2 + (Math.random() - 0.5) * w * 0.3,
+          y: h / 2 + (Math.random() - 0.5) * h * 0.3,
+          vx: 0,
+          vy: 0,
+          radius,
+          color: 'rgba(0, 191, 255, 0.8)',
+          memberCount: channel.members?.length || 0,
+        });
+      }
+    }
+
+    // Remove stale nodes
+    for (const id of nodes.keys()) {
+      if (!activeIds.has(id)) nodes.delete(id);
+    }
+
+    // Build edges: agent -> channel membership
+    const newEdges: PulseEdge[] = [];
+    for (const agent of agents) {
+      for (const ch of (agent.channels || [])) {
+        if (nodes.has(ch)) {
+          newEdges.push({ source: agent.id, target: ch });
+        }
+      }
+    }
+    edgesRef.current = newEdges;
+  }, [state.agents, state.channels, state.messages]);
+
+  // Spawn particles for new messages
+  useEffect(() => {
+    const allMsgs = Object.values(state.messages).flat();
+    const totalCount = allMsgs.length;
+
+    if (totalCount > lastMessageCountRef.current) {
+      const newMsgs = allMsgs.slice(lastMessageCountRef.current);
+      for (const msg of newMsgs.slice(-10)) { // cap at 10 particles per batch
+        const edge = edgesRef.current.find(e => e.source === msg.from && e.target === msg.to);
+        if (edge) {
+          const senderNode = nodesRef.current.get(msg.from);
+          particlesRef.current.push({
+            edge,
+            progress: 0,
+            speed: 0.008 + Math.random() * 0.006,
+            color: senderNode?.color || '#00ff41',
+          });
+        }
+      }
+    }
+    lastMessageCountRef.current = totalCount;
+  }, [state.messages]);
+
+  // Canvas sizing
+  useEffect(() => {
+    const resize = () => {
+      const canvas = canvasRef.current;
+      const container = containerRef.current;
+      if (!canvas || !container) return;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = container.clientWidth * dpr;
+      canvas.height = container.clientHeight * dpr;
+      canvas.style.width = container.clientWidth + 'px';
+      canvas.style.height = container.clientHeight + 'px';
+      const ctx = canvas.getContext('2d');
+      if (ctx) ctx.scale(dpr, dpr);
+    };
+    resize();
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, []);
+
+  // Mouse interaction
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const getNodeAt = (x: number, y: number): PulseNode | null => {
+      for (const node of nodesRef.current.values()) {
+        const dx = node.x - x;
+        const dy = node.y - y;
+        if (dx * dx + dy * dy < node.radius * node.radius * 1.5) return node;
+      }
+      return null;
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      if (dragRef.current) {
+        const node = nodesRef.current.get(dragRef.current.nodeId);
+        if (node) {
+          node.x = x - dragRef.current.offsetX;
+          node.y = y - dragRef.current.offsetY;
+          node.vx = 0;
+          node.vy = 0;
+        }
+        return;
+      }
+
+      const hit = getNodeAt(x, y);
+      hoveredRef.current = hit ? hit.id : null;
+      canvas.style.cursor = hit ? 'pointer' : 'default';
+    };
+
+    const onMouseDown = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const hit = getNodeAt(x, y);
+      if (hit) {
+        dragRef.current = { nodeId: hit.id, offsetX: x - hit.x, offsetY: y - hit.y };
+      }
+    };
+
+    const onMouseUp = () => {
+      dragRef.current = null;
+    };
+
+    const onClick = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const hit = getNodeAt(x, y);
+      if (hit && hit.type === 'agent') {
+        const agent = state.agents[hit.id];
+        if (agent) dispatch({ type: 'SELECT_AGENT', agent });
+      } else if (hit && hit.type === 'channel') {
+        dispatch({ type: 'SELECT_CHANNEL', channel: hit.id });
+      }
+    };
+
+    canvas.addEventListener('mousemove', onMouseMove);
+    canvas.addEventListener('mousedown', onMouseDown);
+    canvas.addEventListener('mouseup', onMouseUp);
+    canvas.addEventListener('click', onClick);
+
+    return () => {
+      canvas.removeEventListener('mousemove', onMouseMove);
+      canvas.removeEventListener('mousedown', onMouseDown);
+      canvas.removeEventListener('mouseup', onMouseUp);
+      canvas.removeEventListener('click', onClick);
+    };
+  }, [state.agents, dispatch]);
+
+  // Animation loop
+  useEffect(() => {
+    const tick = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const dpr = window.devicePixelRatio || 1;
+      const w = canvas.width / dpr;
+      const h = canvas.height / dpr;
+
+      const nodes = Array.from(nodesRef.current.values());
+      const edges = edgesRef.current;
+
+      // Force simulation
+      const REPULSION = 3000;
+      const ATTRACTION = 0.005;
+      const DAMPING = 0.92;
+      const CENTER_GRAVITY = 0.0005;
+
+      // Repulsion between all nodes
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const a = nodes[i];
+          const b = nodes[j];
+          let dx = a.x - b.x;
+          let dy = a.y - b.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          const force = REPULSION / (dist * dist);
+          dx = (dx / dist) * force;
+          dy = (dy / dist) * force;
+          if (!dragRef.current || dragRef.current.nodeId !== a.id) {
+            a.vx += dx;
+            a.vy += dy;
+          }
+          if (!dragRef.current || dragRef.current.nodeId !== b.id) {
+            b.vx -= dx;
+            b.vy -= dy;
+          }
+        }
+      }
+
+      // Attraction along edges
+      for (const edge of edges) {
+        const a = nodesRef.current.get(edge.source);
+        const b = nodesRef.current.get(edge.target);
+        if (!a || !b) continue;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const fx = dx * ATTRACTION;
+        const fy = dy * ATTRACTION;
+        if (!dragRef.current || dragRef.current.nodeId !== a.id) {
+          a.vx += fx;
+          a.vy += fy;
+        }
+        if (!dragRef.current || dragRef.current.nodeId !== b.id) {
+          b.vx -= fx;
+          b.vy -= fy;
+        }
+      }
+
+      // Center gravity + apply velocity
+      for (const node of nodes) {
+        if (dragRef.current && dragRef.current.nodeId === node.id) continue;
+        node.vx += (w / 2 - node.x) * CENTER_GRAVITY;
+        node.vy += (h / 2 - node.y) * CENTER_GRAVITY;
+        node.vx *= DAMPING;
+        node.vy *= DAMPING;
+        node.x += node.vx;
+        node.y += node.vy;
+        // Bounds
+        node.x = Math.max(node.radius, Math.min(w - node.radius, node.x));
+        node.y = Math.max(node.radius, Math.min(h - node.radius, node.y));
+      }
+
+      // Update particles
+      particlesRef.current = particlesRef.current.filter(p => {
+        p.progress += p.speed;
+        return p.progress < 1;
+      });
+
+      // --- Draw ---
+      ctx.clearRect(0, 0, w, h);
+
+      // Background
+      ctx.fillStyle = '#0a0a0a';
+      ctx.fillRect(0, 0, w, h);
+
+      // Grid (subtle)
+      ctx.strokeStyle = 'rgba(0, 255, 65, 0.03)';
+      ctx.lineWidth = 0.5;
+      for (let x = 0; x < w; x += 40) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
+        ctx.stroke();
+      }
+      for (let y = 0; y < h; y += 40) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.stroke();
+      }
+
+      // Edges
+      for (const edge of edges) {
+        const a = nodesRef.current.get(edge.source);
+        const b = nodesRef.current.get(edge.target);
+        if (!a || !b) continue;
+
+        const isHovered = hoveredRef.current === a.id || hoveredRef.current === b.id;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.strokeStyle = isHovered ? 'rgba(0, 255, 65, 0.3)' : 'rgba(0, 255, 65, 0.08)';
+        ctx.lineWidth = isHovered ? 1.5 : 0.5;
+        ctx.stroke();
+      }
+
+      // Particles
+      for (const p of particlesRef.current) {
+        const a = nodesRef.current.get(p.edge.source);
+        const b = nodesRef.current.get(p.edge.target);
+        if (!a || !b) continue;
+        const x = a.x + (b.x - a.x) * p.progress;
+        const y = a.y + (b.y - a.y) * p.progress;
+        const alpha = 1 - p.progress;
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, Math.PI * 2);
+        ctx.fillStyle = p.color.replace(')', `, ${alpha})`).replace('hsl', 'hsla');
+        ctx.fill();
+        // Glow
+        ctx.beginPath();
+        ctx.arc(x, y, 6, 0, Math.PI * 2);
+        ctx.fillStyle = p.color.replace(')', `, ${alpha * 0.3})`).replace('hsl', 'hsla');
+        ctx.fill();
+      }
+
+      // Nodes
+      for (const node of nodes) {
+        const isHovered = hoveredRef.current === node.id;
+
+        // Glow
+        if (node.type === 'agent' && node.online) {
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, node.radius + 4, 0, Math.PI * 2);
+          ctx.fillStyle = isHovered
+            ? node.color.replace('60%)', '60%, 0.3)')
+            : node.color.replace('60%)', '60%, 0.1)');
+          ctx.fill();
+        }
+
+        // Node body
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
+        if (node.type === 'channel') {
+          // Channel: hexagonal feel via fill
+          ctx.fillStyle = isHovered ? 'rgba(0, 191, 255, 0.3)' : 'rgba(0, 191, 255, 0.15)';
+          ctx.strokeStyle = 'rgba(0, 191, 255, 0.6)';
+          ctx.lineWidth = 1.5;
+          ctx.fill();
+          ctx.stroke();
+        } else {
+          // Agent node
+          const alpha = node.online ? 0.8 : 0.3;
+          ctx.fillStyle = node.color.replace('60%)', `60%, ${isHovered ? 0.5 : 0.2})`);
+          ctx.strokeStyle = node.color.replace('60%)', `60%, ${alpha})`);
+          ctx.lineWidth = node.verified ? 2 : 1;
+          ctx.fill();
+          ctx.stroke();
+
+          // Verified ring
+          if (node.verified) {
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, node.radius + 2, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(0, 191, 255, 0.5)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          }
+        }
+
+        // Label
+        ctx.font = `${isHovered ? 11 : 10}px "IBM Plex Mono", monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        const label = node.label.length > 12 ? node.label.slice(0, 10) + '..' : node.label;
+        ctx.fillStyle = isHovered ? '#ffffff' : (node.type === 'channel' ? 'rgba(0, 191, 255, 0.8)' : 'rgba(200, 200, 200, 0.7)');
+        ctx.fillText(label, node.x, node.y + node.radius + 4);
+      }
+
+      // Tooltip for hovered node
+      if (hoveredRef.current) {
+        const node = nodesRef.current.get(hoveredRef.current);
+        if (node) {
+          const lines: string[] = [node.label];
+          if (node.type === 'agent') {
+            lines.push(node.id);
+            lines.push(node.online ? 'Online' : 'Offline');
+            if (node.verified) lines.push('Verified');
+          } else {
+            lines.push(`${node.memberCount || 0} members`);
+          }
+
+          const padding = 8;
+          const lineHeight = 14;
+          const tooltipW = Math.max(...lines.map(l => ctx.measureText(l).width)) + padding * 2;
+          const tooltipH = lines.length * lineHeight + padding * 2;
+          let tx = node.x + node.radius + 10;
+          let ty = node.y - tooltipH / 2;
+          if (tx + tooltipW > w) tx = node.x - node.radius - 10 - tooltipW;
+          if (ty < 0) ty = 4;
+          if (ty + tooltipH > h) ty = h - tooltipH - 4;
+
+          ctx.fillStyle = 'rgba(17, 17, 17, 0.95)';
+          ctx.strokeStyle = 'rgba(0, 255, 65, 0.3)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.roundRect(tx, ty, tooltipW, tooltipH, 4);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.font = '10px "IBM Plex Mono", monospace';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'top';
+          lines.forEach((line, i) => {
+            ctx.fillStyle = i === 0 ? '#00ff41' : '#888888';
+            ctx.fillText(line, tx + padding, ty + padding + i * lineHeight);
+          });
+        }
+      }
+
+      animRef.current = requestAnimationFrame(tick);
+    };
+
+    animRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(animRef.current);
+  }, []);
+
+  return (
+    <div className="network-pulse" ref={containerRef}>
+      <canvas ref={canvasRef} />
+      <div className="pulse-legend">
+        <span className="legend-item"><span className="legend-dot agent-dot" /> Agent</span>
+        <span className="legend-item"><span className="legend-dot channel-dot" /> Channel</span>
+        <span className="legend-item"><span className="legend-dot verified-dot" /> Verified</span>
+        <span className="legend-item"><span className="legend-dot particle-dot" /> Message</span>
+      </div>
+    </div>
+  );
+}
+
 function LogsPanel({ state, dispatch }: { state: DashboardState; dispatch: React.Dispatch<DashboardAction> }) {
   const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -1518,6 +2111,47 @@ function LogsPanel({ state, dispatch }: { state: DashboardState; dispatch: React
   );
 }
 
+function ConnectionOverlay({ state }: { state: DashboardState }) {
+  if (state.connectionStatus === 'ready') return null;
+
+  const phases: Record<string, { label: string; detail: string }> = {
+    connecting: { label: 'CONNECTING', detail: 'Establishing WebSocket link...' },
+    syncing: { label: 'SYNCING', detail: 'Downloading agents, channels, messages...' },
+    disconnected: { label: 'RECONNECTING', detail: 'Connection lost — retrying...' },
+    error: { label: 'ERROR', detail: state.connectionError || 'Unknown error' },
+  };
+
+  const phase = phases[state.connectionStatus] || phases.connecting;
+  const isError = state.connectionStatus === 'error';
+
+  return (
+    <div className="connection-overlay">
+      <div className="connection-card">
+        <div className="connection-logo">AgentChat</div>
+        {!isError && <div className="connection-spinner" />}
+        {isError && <div className="connection-error-icon">!</div>}
+        <div className={`connection-phase ${isError ? 'error' : ''}`}>{phase.label}</div>
+        <div className="connection-detail">{phase.detail}</div>
+        <div className="connection-steps">
+          {(['connecting', 'syncing', 'ready'] as const).map((step) => {
+            const order = { connecting: 0, syncing: 1, ready: 2 } as const;
+            const statusOrder = { connecting: 0, syncing: 1, ready: 2, disconnected: -1, error: -1 } as const;
+            const current = statusOrder[state.connectionStatus];
+            const stepIdx = order[step];
+            const cls = current === stepIdx ? 'active' : current > stepIdx ? 'done' : '';
+            return (
+              <div key={step} className={`connection-step ${cls}`}>
+                <span className="step-dot" />
+                <span>{step === 'ready' ? 'Live' : step.charAt(0).toUpperCase() + step.slice(1)}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const send = useWebSocket(dispatch);
@@ -1533,9 +2167,13 @@ export default function App() {
           <div className="main">
             <Sidebar state={state} dispatch={dispatch} sidebarWidth={sidebar.width} />
             <div className="resize-handle" ref={sidebar.handleRef} onMouseDown={sidebar.onMouseDown} />
-            <DropZone state={state} dispatch={dispatch}>
-              <MessageFeed state={state} dispatch={dispatch} send={send} />
-            </DropZone>
+            {state.pulseOpen ? (
+              <NetworkPulse state={state} dispatch={dispatch} />
+            ) : (
+              <DropZone state={state} dispatch={dispatch}>
+                <MessageFeed state={state} dispatch={dispatch} send={send} />
+              </DropZone>
+            )}
             <div className="resize-handle" ref={rightPanel.handleRef} onMouseDown={rightPanel.onMouseDown} />
             <RightPanel state={state} dispatch={dispatch} send={send} panelWidth={rightPanel.width} />
           </div>
@@ -1550,6 +2188,7 @@ export default function App() {
         </div>
         <SendFileModal state={state} dispatch={dispatch} send={send} />
         <SaveModal state={state} dispatch={dispatch} send={send} />
+        <ConnectionOverlay state={state} />
       </div>
     </DashboardContext.Provider>
   );
