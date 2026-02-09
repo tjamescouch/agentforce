@@ -1062,8 +1062,7 @@ function connectClientToAgentChat(client: DashboardClient): void {
     console.log(`Per-session connection open for ${client.id}`);
     ws.send(JSON.stringify({
       type: 'IDENTIFY',
-      name: ephemeral.nick,
-      pubkey: ephemeral.pubkey
+      name: ephemeral.nick
     }));
 
     // Keepalive pings every 25s to prevent idle timeout
@@ -1342,8 +1341,7 @@ function reconnectClientToAgentChat(client: DashboardClient): void {
     console.log(`Per-session reconnection open for ${client.id}`);
     ws.send(JSON.stringify({
       type: 'IDENTIFY',
-      name: client.identity!.nick,
-      pubkey: client.identity!.pubkey
+      name: client.identity!.nick
     }));
 
     if (client.agentChatPingInterval) clearInterval(client.agentChatPingInterval);
