@@ -648,8 +648,12 @@ function scheduleReconnect(id: Identity): void {
   }, reconnectDelay);
 }
 
+const QUIET_MSG_TYPES = new Set(['PONG', 'MSG', 'typing', 'AGENT_LIST', 'CHANNEL_LIST']);
+
 function handleAgentChatMessage(msg: AgentChatMsg): void {
-  console.log('AgentChat:', msg.type, JSON.stringify(msg).slice(0, 150));
+  if (!QUIET_MSG_TYPES.has(msg.type)) {
+    console.log('AgentChat:', msg.type, JSON.stringify(msg).slice(0, 150));
+  }
 
   switch (msg.type) {
     case 'CHALLENGE': {
