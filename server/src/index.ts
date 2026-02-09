@@ -65,7 +65,7 @@ function resolveAgentChatUrl(): string {
 
 const AGENTCHAT_URL = resolveAgentChatUrl();
 const PORT = Number(process.env.PORT) || 3000;
-const IDENTITY_FILE = '.dashboard-identity.json';
+const IDENTITY_FILE = process.env.IDENTITY_FILE || '.dashboard-identity.json';
 const AGENT_NAMES_FILE = 'agent-names.json';
 
 // ============ Types ============
