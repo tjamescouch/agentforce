@@ -327,6 +327,7 @@ body {
   color: var(--text-muted);
   font-size: 0.8em;
   margin-left: 2px;
+  margin-right: 6px;
 }
 
 .message .content {
