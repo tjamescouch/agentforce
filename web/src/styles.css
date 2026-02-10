@@ -659,10 +659,10 @@ body {
 }
 
 .unverified-badge {
-  color: var(--text-muted);
-  font-size: 10px;
+  color: #b08a00;
+  font-size: 11px;
   margin-left: 4px;
-  opacity: 0.5;
+  opacity: 0.85;
 }
 
 .verified-badge-detail {
@@ -680,8 +680,8 @@ body {
   margin-left: 8px;
   padding: 2px 6px;
   font-size: 10px;
-  color: var(--text-muted);
-  border: 1px solid var(--text-muted);
+  color: #b08a00;
+  border: 1px solid #b08a00;
   border-radius: 3px;
 }
 
@@ -941,30 +941,6 @@ body {
   box-shadow: 0 0 8px rgba(0, 255, 65, 0.3);
 }
 
-/* Verified / unverified badges */
-.verified-badge {
-  color: var(--accent-blue);
-  font-size: 11px;
-  margin-left: 4px;
-  opacity: 0.9;
-}
-
-.unverified-badge {
-  color: var(--text-muted);
-  font-size: 10px;
-  margin-left: 4px;
-  opacity: 0.5;
-}
-
-.unverified-badge-detail {
-  display: inline-block;
-  margin-left: 8px;
-  padding: 2px 6px;
-  font-size: 10px;
-  color: var(--text-muted);
-  border: 1px solid var(--text-muted);
-  border-radius: 3px;
-}
 
 /* Agent type icon (human/robot) */
 .agent-type-icon {
