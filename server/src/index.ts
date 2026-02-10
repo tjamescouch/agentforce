@@ -783,7 +783,7 @@ function handleAgentChatMessage(msg: AgentChatMsg): void {
 
     case 'AGENTS': {
       const agentList = msg.list || msg.agents || [];
-      if (msg.channel && agentList.length > 0) {
+      if (msg.channel) {
         agentList.forEach(a => {
           const agent: AgentState = {
             id: a.id,
@@ -805,11 +805,11 @@ function handleAgentChatMessage(msg: AgentChatMsg): void {
             state.channels.get(msg.channel!)!.members.add(a.id);
           }
         });
-        broadcastToDashboards({
-          type: 'agents_update',
-          data: [...state.agents.values()].map(a => ({ ...a, channels: [...a.channels] }))
-        });
       }
+      broadcastToDashboards({
+        type: 'agents_update',
+        data: [...state.agents.values()].map(a => ({ ...a, channels: [...a.channels] }))
+      });
       break;
     }
 
