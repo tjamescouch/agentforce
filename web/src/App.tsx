@@ -1356,7 +1356,52 @@ function DropZone({ state, dispatch, children }: { state: DashboardState; dispat
       return;
     }
 
-    const files = Array.from(e.dataTransfer.files);
+    // Recursively read directory entries via webkitGetAsEntry
+    const readEntry = (entry: FileSystemEntry, path: string): Promise<File[]> => {
+      if (entry.isFile) {
+        return new Promise((resolve) => {
+          (entry as FileSystemFileEntry).file((f) => {
+            const name = path ? `${path}/${f.name}` : f.name;
+            resolve([new File([f], name, { type: f.type, lastModified: f.lastModified })]);
+          }, () => resolve([]));
+        });
+      }
+      if (entry.isDirectory) {
+        return new Promise((resolve) => {
+          const reader = (entry as FileSystemDirectoryEntry).createReader();
+          const allFiles: File[] = [];
+          const readBatch = () => {
+            reader.readEntries(async (entries) => {
+              if (entries.length === 0) {
+                resolve(allFiles);
+                return;
+              }
+              for (const child of entries) {
+                const childFiles = await readEntry(child, path ? `${path}/${entry.name}` : entry.name);
+                allFiles.push(...childFiles);
+              }
+              readBatch(); // readEntries may return partial results
+            }, () => resolve(allFiles));
+          };
+          readBatch();
+        });
+      }
+      return Promise.resolve([]);
+    };
+
+    let files: File[] = [];
+    const items = e.dataTransfer.items;
+    if (items && items.length > 0) {
+      const entries = Array.from(items).map(item => item.webkitGetAsEntry?.()).filter(Boolean) as FileSystemEntry[];
+      if (entries.length > 0) {
+        const results = await Promise.all(entries.map(entry => readEntry(entry, '')));
+        files = results.flat();
+      }
+    }
+    // Fallback for browsers without webkitGetAsEntry
+    if (files.length === 0) {
+      files = Array.from(e.dataTransfer.files);
+    }
     if (files.length === 0) return;
 
     setUploading(true);
