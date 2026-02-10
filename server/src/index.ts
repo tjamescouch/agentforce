@@ -97,6 +97,7 @@ interface AgentState {
   online: boolean;
   presence?: string;
   verified: boolean;
+  isDashboard: boolean;
 }
 
 interface ChannelState {
@@ -763,7 +764,8 @@ function handleAgentChatMessage(msg: AgentChatMsg): void {
             lastSeen: Date.now(),
             online: true,
             presence: a.presence,
-            verified: !!a.verified
+            verified: !!a.verified,
+            isDashboard: isDashboardAgent(a.id)
           };
           if (state.agents.has(a.id)) {
             const existing = state.agents.get(a.id)!;
@@ -793,7 +795,8 @@ function handleAgentChatMessage(msg: AgentChatMsg): void {
         channels: new Set([msg.channel].filter(Boolean) as string[]),
         lastSeen: Date.now(),
         online: true,
-        verified: !!msg.verified
+        verified: !!msg.verified,
+        isDashboard: isDashboardAgent(joiningAgentId)
       };
       if (state.agents.has(joiningAgentId)) {
         const existing = state.agents.get(joiningAgentId)!;
@@ -1492,6 +1495,13 @@ function disconnectClientFromAgentChat(client: DashboardClient): void {
 // ============ Dashboard Bridge ============
 
 const dashboardClients = new Set<DashboardClient>();
+
+function isDashboardAgent(agentId: string): boolean {
+  for (const client of dashboardClients) {
+    if (client.agentId === agentId) return true;
+  }
+  return false;
+}
 
 // Wire log broadcast now that broadcastToDashboards exists
 broadcastLog = (entry: LogEntry) => {
