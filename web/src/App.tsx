@@ -11,6 +11,7 @@ interface Agent {
   presence?: string;
   event?: string;
   verified?: boolean;
+  isDashboard?: boolean;
 }
 
 interface Channel {
@@ -710,7 +711,7 @@ function TopBar({ state, dispatch, send }: { state: DashboardState; dispatch: Re
   return (
     <div className="topbar">
       <div className="topbar-left">
-        <span className="logo">AgentChat Dashboard</span>
+        <span className="logo">AgentChat</span>
         <span className={`status ${state.connected ? 'online' : 'offline'}`}>
           {state.connected ? 'CONNECTED' : 'DISCONNECTED'}
         </span>
@@ -786,10 +787,14 @@ function Sidebar({ state, dispatch, sidebarWidth }: { state: DashboardState; dis
               onClick={() => dispatch({ type: 'SELECT_AGENT', agent })}
             >
               <span className={`dot ${agent.online ? 'online' : 'offline'}`} />
+              <span className="agent-type-icon" title={agent.isDashboard ? 'Dashboard user' : 'Agent'}>{agent.isDashboard ? '\uD83E\uDDD1' : '\uD83E\uDD16'}</span>
               <span className="nick" style={{ color: agentColor(agent.nick || agent.id) }}>
                 {getDisplayName(agent)}
               </span>
-              {agent.verified && <span className="verified-badge" title="Verified (pubkey authenticated)">&#x2713;</span>}
+              {agent.verified
+                ? <span className="verified-badge" title="Verified (allowlisted)">&#x2713;</span>
+                : <span className="unverified-badge" title="Unverified identity">&#x26A0;</span>
+              }
             </div>
           ))}
         </div>
@@ -935,7 +940,10 @@ function MessageFeed({ state, dispatch, send }: { state: DashboardState; dispatc
                 &lt;{state.agents[msg.from]?.nick || msg.fromNick || msg.from}&gt;
               </span>
               <span className="agent-id">{msg.from}</span>
-              {state.agents[msg.from]?.verified && <span className="verified-badge">&#x2713;</span>}
+              {state.agents[msg.from]?.verified
+                ? <span className="verified-badge">&#x2713;</span>
+                : state.agents[msg.from] && <span className="unverified-badge">&#x26A0;</span>
+              }
               {fileData ? (
                 <span className="file-bubble">
                   <span className="file-icon">&#x1F4CE;</span>
@@ -1325,10 +1333,20 @@ function RightPanel({ state, dispatch, send, panelWidth }: { state: DashboardSta
             {agent.nick || agent.id}
           </div>
         )}
-        <div className="detail-id">{agent.id}{agent.verified && <span className="verified-badge" title="Verified identity"> &#x2713;</span>}</div>
+        <div className="detail-id">
+          <span className="agent-type-icon">{agent.isDashboard ? '\uD83E\uDDD1' : '\uD83E\uDD16'}</span>
+          {agent.id}
+          {agent.verified
+            ? <span className="verified-badge" title="Verified (allowlisted)"> &#x2713;</span>
+            : <span className="unverified-badge" title="Unverified identity"> &#x26A0;</span>
+          }
+        </div>
         <div className={`detail-status ${agent.online ? 'online' : 'offline'}`}>
           {agent.online ? 'Online' : 'Offline'}
-          {agent.verified && <span className="verified-badge-detail">Verified</span>}
+          {agent.verified
+            ? <span className="verified-badge-detail">Verified</span>
+            : <span className="unverified-badge-detail">Unverified</span>
+          }
         </div>
         {agentElo && (
           <div className="detail-elo">
