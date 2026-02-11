@@ -1,4 +1,4 @@
-app = 'agentchat'
+app = 'agentforce'
 primary_region = 'sjc'
 
 [build]
