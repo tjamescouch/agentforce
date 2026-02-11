@@ -65,6 +65,11 @@ interface LogEntry {
   msg: string;
 }
 
+interface ActivityStats {
+  agents: Record<string, { msgsPerMin: number; msgCount: number }>;
+  totalMsgsPerMin: number;
+}
+
 interface DashboardState {
   connected: boolean;
   connectionStatus: 'connecting' | 'syncing' | 'ready' | 'error' | 'disconnected';
@@ -86,6 +91,7 @@ interface DashboardState {
   logs: LogEntry[];
   logsOpen: boolean;
   pulseOpen: boolean;
+  activity: ActivityStats;
 }
 
 type DashboardAction =
@@ -115,7 +121,8 @@ type DashboardAction =
   | { type: 'AGENTS_BULK_UPDATE'; data: Agent[] }
   | { type: 'CHANNELS_BULK_UPDATE'; data: Channel[] }
   | { type: 'SET_DASHBOARD_AGENT'; data: { agentId: string; nick: string; publicKey?: string; secretKey?: string } }
-  | { type: 'NICK_CHANGED'; nick: string };
+  | { type: 'NICK_CHANGED'; nick: string }
+  | { type: 'ACTIVITY'; data: ActivityStats };
 
 interface StateSyncPayload {
   agents: Agent[];
@@ -140,6 +147,57 @@ const DashboardContext = createContext<DashboardContextValue | null>(null);
 
 const savedMode = typeof window !== 'undefined' ? localStorage.getItem('dashboardMode') || 'lurk' : 'lurk';
 const savedNick = typeof window !== 'undefined' ? localStorage.getItem('dashboardNick') : null;
+
+// ============ Theme ============
+
+type Theme = 'light' | 'dark' | 'system';
+
+function getEffectiveTheme(theme: Theme): 'light' | 'dark' {
+  if (theme === 'system') {
+    return typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  }
+  return theme;
+}
+
+function applyTheme(theme: Theme) {
+  const effective = getEffectiveTheme(theme);
+  if (theme === 'system') {
+    document.documentElement.removeAttribute('data-theme');
+  } else {
+    document.documentElement.setAttribute('data-theme', effective);
+  }
+  localStorage.setItem('dashboardTheme', theme);
+}
+
+const savedTheme = (typeof window !== 'undefined' ? localStorage.getItem('dashboardTheme') as Theme : null) || 'system';
+if (typeof window !== 'undefined') applyTheme(savedTheme);
+
+function useTheme(): [Theme, (t: Theme) => void] {
+  const [theme, setThemeState] = useState<Theme>(savedTheme);
+  const setTheme = useCallback((t: Theme) => {
+    setThemeState(t);
+    applyTheme(t);
+  }, []);
+
+  useEffect(() => {
+    if (theme !== 'system') return;
+    const mq = window.matchMedia('(prefers-color-scheme: light)');
+    const handler = () => applyTheme('system');
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, [theme]);
+
+  return [theme, setTheme];
+}
+
+// Helper to get current effective theme for canvas rendering
+function getCurrentEffectiveTheme(): 'light' | 'dark' {
+  if (typeof window === 'undefined') return 'dark';
+  const attr = document.documentElement.getAttribute('data-theme');
+  if (attr === 'light') return 'light';
+  if (attr === 'dark') return 'dark';
+  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
 
 const loadPersistedMessages = (): Record<string, Message[]> => {
   try {
@@ -184,7 +242,8 @@ const initialState: DashboardState = {
   saveModal: null,
   logs: [],
   logsOpen: false,
-  pulseOpen: false
+  pulseOpen: false,
+  activity: { agents: {}, totalMsgsPerMin: 0 }
 };
 
 function reducer(state: DashboardState, action: DashboardAction): DashboardState {
@@ -340,6 +399,8 @@ function reducer(state: DashboardState, action: DashboardAction): DashboardState
           : { id: null, nick: action.nick }
       };
     }
+    case 'ACTIVITY':
+      return { ...state, activity: action.data };
     default:
       return state;
   }
@@ -363,7 +424,18 @@ function safeUrl(url: string): string | null {
 
 function formatTime(ts: number): string {
   const d = new Date(ts);
-  return d.toLocaleTimeString('en-US', { hour12: false });
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  const time = d.toLocaleTimeString('en-US', { hour12: false });
+  if (diffDays === 0 && d.getDate() === now.getDate()) return time;
+  if (diffDays < 7) {
+    const day = d.toLocaleDateString('en-US', { weekday: 'short' });
+    return `${day} ${time}`;
+  }
+  const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return `${date} ${time}`;
 }
 
 function formatSize(bytes: number): string {
@@ -416,6 +488,7 @@ function useWebSocket(dispatch: React.Dispatch<DashboardAction>): WsSendFn {
         switch (msg.type) {
           case 'state_sync':
             dispatch({ type: 'STATE_SYNC', data: msg.data });
+            if (msg.data.activity) dispatch({ type: 'ACTIVITY', data: msg.data.activity });
             break;
           case 'connected':
             dispatch({ type: 'CONNECTED', data: msg.data });
@@ -516,6 +589,9 @@ function useWebSocket(dispatch: React.Dispatch<DashboardAction>): WsSendFn {
           case 'log_history':
             dispatch({ type: 'LOG_HISTORY', data: msg.data });
             break;
+          case 'activity':
+            dispatch({ type: 'ACTIVITY', data: msg.data });
+            break;
           case 'error':
             console.error('Server error:', msg.data?.code, msg.data?.message);
             if (msg.data?.code === 'LURK_MODE') {
@@ -594,7 +670,19 @@ function useResizable(initialWidth: number, min: number, max: number, side: 'lef
 
 // ============ Components ============
 
-function TopBar({ state, dispatch, send }: { state: DashboardState; dispatch: React.Dispatch<DashboardAction>; send: WsSendFn }) {
+function formatMsgRate(msgsPerMin: number): string {
+  return `${msgsPerMin}/min`;
+}
+
+function TopBar({ state, dispatch, send, theme, setTheme }: { state: DashboardState; dispatch: React.Dispatch<DashboardAction>; send: WsSendFn; theme: Theme; setTheme: (t: Theme) => void }) {
+  const cycleTheme = () => {
+    const order: Theme[] = ['system', 'light', 'dark'];
+    const next = order[(order.indexOf(theme) + 1) % order.length];
+    setTheme(next);
+  };
+
+  const themeLabel = theme === 'system' ? 'AUTO' : theme === 'light' ? 'LIGHT' : 'DARK';
+
   return (
     <div className="topbar">
       <div className="topbar-left">
@@ -602,6 +690,11 @@ function TopBar({ state, dispatch, send }: { state: DashboardState; dispatch: Re
         <span className={`status ${state.connected ? 'online' : 'offline'}`}>
           {state.connected ? 'CONNECTED' : 'DISCONNECTED'}
         </span>
+        {state.activity.totalMsgsPerMin > 0 && (
+          <span className="activity-rate" title="Messages per minute (5min rolling avg)">
+            {formatMsgRate(state.activity.totalMsgsPerMin)} msgs
+          </span>
+        )}
       </div>
       <div className="topbar-right">
         {state.dashboardAgent && (
@@ -618,6 +711,9 @@ function TopBar({ state, dispatch, send }: { state: DashboardState; dispatch: Re
           onClick={() => dispatch({ type: 'TOGGLE_LOGS' })}
         >
           LOGS
+        </button>
+        <button className="theme-btn" onClick={cycleTheme} title={`Theme: ${theme}`}>
+          {themeLabel}
         </button>
         <button
           className={`mode-btn ${state.mode}`}
@@ -779,6 +875,9 @@ function MessageFeed({ state, dispatch, send }: { state: DashboardState; dispatc
     }
     send({ type: 'send_message', data: { to: state.selectedChannel, content: input } });
     setInput('');
+    // Scroll to bottom after sending — the user expects to see their message
+    setIsAtBottom(true);
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   return (
@@ -938,6 +1037,12 @@ function RightPanel({ state, dispatch, send, panelWidth }: { state: DashboardSta
             : <span className="unverified-badge-detail">Unverified</span>
           }
         </div>
+        {state.activity.agents[agent.id] && state.activity.agents[agent.id].msgsPerMin > 0 && (
+          <div className="detail-activity">
+            <span className="label">Activity:</span>
+            <span className="activity-value">{formatMsgRate(state.activity.agents[agent.id].msgsPerMin)} msgs ({state.activity.agents[agent.id].msgCount} in 5min)</span>
+          </div>
+        )}
         {agent.channels && agent.channels.length > 0 && (
           <div className="detail-channels">
             <span className="label">Channels:</span>
@@ -1404,7 +1509,7 @@ function NetworkPulse({ state, dispatch }: { state: DashboardState; dispatch: Re
           vx: 0,
           vy: 0,
           radius,
-          color: 'rgba(0, 191, 255, 0.8)',
+          color: 'rgba(91, 141, 239, 0.8)',
           memberCount: channel.members?.length || 0,
         });
       }
@@ -1442,7 +1547,7 @@ function NetworkPulse({ state, dispatch }: { state: DashboardState; dispatch: Re
             edge,
             progress: 0,
             speed: 0.008 + Math.random() * 0.006,
-            color: senderNode?.color || '#00ff41',
+            color: senderNode?.color || '#5b8def',
           });
         }
       }
@@ -1630,11 +1735,12 @@ function NetworkPulse({ state, dispatch }: { state: DashboardState; dispatch: Re
       ctx.clearRect(0, 0, w, h);
 
       // Background
-      ctx.fillStyle = '#0a0a0a';
+      const isDark = getCurrentEffectiveTheme() === 'dark';
+      ctx.fillStyle = isDark ? '#1e1e2e' : '#f5f6f8';
       ctx.fillRect(0, 0, w, h);
 
       // Grid (subtle)
-      ctx.strokeStyle = 'rgba(0, 255, 65, 0.03)';
+      ctx.strokeStyle = isDark ? 'rgba(91, 141, 239, 0.04)' : 'rgba(74, 125, 229, 0.06)';
       ctx.lineWidth = 0.5;
       for (let x = 0; x < w; x += 40) {
         ctx.beginPath();
@@ -1659,7 +1765,7 @@ function NetworkPulse({ state, dispatch }: { state: DashboardState; dispatch: Re
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
-        ctx.strokeStyle = isHovered ? 'rgba(0, 255, 65, 0.3)' : 'rgba(0, 255, 65, 0.08)';
+        ctx.strokeStyle = isHovered ? 'rgba(91, 141, 239, 0.3)' : 'rgba(91, 141, 239, 0.1)';
         ctx.lineWidth = isHovered ? 1.5 : 0.5;
         ctx.stroke();
       }
@@ -1702,8 +1808,8 @@ function NetworkPulse({ state, dispatch }: { state: DashboardState; dispatch: Re
         ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
         if (node.type === 'channel') {
           // Channel: hexagonal feel via fill
-          ctx.fillStyle = isHovered ? 'rgba(0, 191, 255, 0.3)' : 'rgba(0, 191, 255, 0.15)';
-          ctx.strokeStyle = 'rgba(0, 191, 255, 0.6)';
+          ctx.fillStyle = isHovered ? 'rgba(91, 141, 239, 0.3)' : 'rgba(91, 141, 239, 0.15)';
+          ctx.strokeStyle = 'rgba(91, 141, 239, 0.6)';
           ctx.lineWidth = 1.5;
           ctx.fill();
           ctx.stroke();
@@ -1720,7 +1826,7 @@ function NetworkPulse({ state, dispatch }: { state: DashboardState; dispatch: Re
           if (node.verified) {
             ctx.beginPath();
             ctx.arc(node.x, node.y, node.radius + 2, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(0, 191, 255, 0.5)';
+            ctx.strokeStyle = 'rgba(91, 141, 239, 0.5)';
             ctx.lineWidth = 1;
             ctx.stroke();
           }
@@ -1731,7 +1837,7 @@ function NetworkPulse({ state, dispatch }: { state: DashboardState; dispatch: Re
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         const label = node.label.length > 12 ? node.label.slice(0, 10) + '..' : node.label;
-        ctx.fillStyle = isHovered ? '#ffffff' : (node.type === 'channel' ? 'rgba(0, 191, 255, 0.8)' : 'rgba(200, 200, 200, 0.7)');
+        ctx.fillStyle = isHovered ? '#ffffff' : (node.type === 'channel' ? 'rgba(91, 141, 239, 0.8)' : 'rgba(200, 200, 220, 0.7)');
         ctx.fillText(label, node.x, node.y + node.radius + 4);
       }
 
@@ -1758,8 +1864,8 @@ function NetworkPulse({ state, dispatch }: { state: DashboardState; dispatch: Re
           if (ty < 0) ty = 4;
           if (ty + tooltipH > h) ty = h - tooltipH - 4;
 
-          ctx.fillStyle = 'rgba(17, 17, 17, 0.95)';
-          ctx.strokeStyle = 'rgba(0, 255, 65, 0.3)';
+          ctx.fillStyle = isDark ? 'rgba(37, 37, 54, 0.95)' : 'rgba(255, 255, 255, 0.95)';
+          ctx.strokeStyle = isDark ? 'rgba(91, 141, 239, 0.3)' : 'rgba(74, 125, 229, 0.4)';
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.roundRect(tx, ty, tooltipW, tooltipH, 4);
@@ -1770,7 +1876,7 @@ function NetworkPulse({ state, dispatch }: { state: DashboardState; dispatch: Re
           ctx.textAlign = 'left';
           ctx.textBaseline = 'top';
           lines.forEach((line, i) => {
-            ctx.fillStyle = i === 0 ? '#00ff41' : '#888888';
+            ctx.fillStyle = i === 0 ? (isDark ? '#5b8def' : '#4a7de5') : (isDark ? '#8888aa' : '#666680');
             ctx.fillText(line, tx + padding, ty + padding + i * lineHeight);
           });
         }
@@ -1879,11 +1985,12 @@ export default function App() {
   const sidebar = useResizable(220, 160, 400, 'left');
   const rightPanel = useResizable(280, 200, 500, 'right');
   const logsPanel = useResizable(200, 80, 500, 'bottom');
+  const [theme, setTheme] = useTheme();
 
   return (
     <DashboardContext.Provider value={{ state, dispatch, send }}>
       <div className="dashboard">
-        <TopBar state={state} dispatch={dispatch} send={send} />
+        <TopBar state={state} dispatch={dispatch} send={send} theme={theme} setTheme={setTheme} />
         <div className="content-area">
           <div className="main">
             <Sidebar state={state} dispatch={dispatch} sidebarWidth={sidebar.width} />
