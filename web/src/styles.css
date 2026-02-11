@@ -1451,6 +1451,20 @@ body {
   .sidebar { display: none; }
   .right-panel { display: none; }
   .message-feed { width: 100%; }
+  .topbar { padding: 8px 12px; flex-wrap: wrap; gap: 8px; }
+  .topbar-left { gap: 8px; }
+  .topbar-right { gap: 8px; }
+  .input-bar { padding: 8px; gap: 4px; }
+  .input-bar input { padding: 8px 10px; font-size: 16px; }
+  .input-bar button { padding: 8px 14px; }
+  .mode-btn { padding: 4px 8px; font-size: 11px; }
+  .dashboard-nick { display: none; }
+}
+
+@media (max-width: 480px) {
+  .topbar { padding: 6px 8px; }
+  .logo { font-size: 14px; }
+  .input-bar input { font-size: 16px; }
 }
 
 /* ============ File Bubble ============ */
