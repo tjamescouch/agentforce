@@ -642,6 +642,14 @@ function connectToAgentChat(id: Identity): void {
     setTimeout(() => send({ type: 'JOIN', channel: '#agents' }), 700);
     setTimeout(() => send({ type: 'JOIN', channel: '#discovery' }), 900);
 
+    // Periodically refresh channel list to discover newly created channels
+    if ((globalThis as any).__channelRefreshInterval) {
+      clearInterval((globalThis as any).__channelRefreshInterval);
+    }
+    (globalThis as any).__channelRefreshInterval = setInterval(() => {
+      send({ type: 'LIST_CHANNELS' });
+    }, 60_000); // every 60 seconds
+
     broadcastToDashboards({
       type: 'connected',
       data: { dashboardAgent: state.dashboardAgent },
