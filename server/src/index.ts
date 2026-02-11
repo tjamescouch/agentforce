@@ -3,7 +3,6 @@ import express, { Request, Response, NextFunction } from 'express';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
-import { execSync } from 'child_process';
 import path from 'path';
 import crypto from 'crypto';
 import multer from 'multer';
@@ -114,65 +113,6 @@ interface ChatMessage {
   to: string;
   content: string;
   ts: number;
-  isProposal: boolean;
-}
-
-interface ProposalState {
-  id: string;
-  from: string;
-  to: string;
-  task: string;
-  amount?: number;
-  currency?: string;
-  status: string;
-  eloStake?: number;
-  createdAt: number;
-  updatedAt: number;
-}
-
-// Mirror of web/src/App.tsx dispute types — keep in sync
-interface DisputeEvidenceItem {
-  kind: string;
-  label: string;
-  value: string;
-  url?: string;
-  hash?: string;
-}
-
-interface DisputeEvidence {
-  items: DisputeEvidenceItem[];
-  statement: string;
-  submitted_at: number;
-}
-
-interface ArbiterSlot {
-  agent_id: string;
-  status: string;
-  accepted_at?: number;
-  vote?: {
-    verdict: string;
-    reasoning: string;
-    voted_at: number;
-  };
-}
-
-interface DisputeState {
-  id: string;
-  proposal_id: string;
-  disputant: string;
-  respondent: string;
-  reason: string;
-  phase: string;
-  arbiters: ArbiterSlot[];
-  disputant_evidence?: DisputeEvidence;
-  respondent_evidence?: DisputeEvidence;
-  verdict?: string;
-  rating_changes?: Record<string, { old: number; new: number; delta: number }>;
-  created_at: number;
-  evidence_deadline?: number;
-  vote_deadline?: number;
-  resolved_at?: number;
-  updated_at: number;
 }
 
 interface DashboardClient {
@@ -206,48 +146,10 @@ interface AgentChatMsg {
   agent?: string;
   agentId?: string;
   from_name?: string;
-  proposal_id?: string;
-  task?: string;
-  amount?: number;
-  currency?: string;
-  status?: string;
-  elo_stake?: number;
-  results?: Skill[];
   code?: string;
   message?: string;
   sig?: string;
   verified?: boolean;
-  // Dispute fields
-  dispute_id?: string;
-  reason?: string;
-  phase?: string;
-  disputant?: string;
-  respondent?: string;
-  server_nonce?: string;
-  nonce?: string;
-  challenge_id?: string;
-  expires_at?: number;
-  arbiters?: ArbiterSlot[];
-  arbiter?: string;
-  arbiter_status?: string;
-  party?: string;
-  evidence_count?: number;
-  statement?: string;
-  items?: DisputeEvidenceItem[];
-  verdict?: string;
-  votes?: Array<{ arbiter: string; verdict: string; reasoning: string; voted_at: number }>;
-  rating_changes?: Record<string, { old: number; new: number; delta: number }>;
-  evidence_deadline?: number;
-  vote_deadline?: number;
-  resolved_at?: number;
-}
-
-interface Skill {
-  capability: string;
-  rate?: number;
-  currency?: string;
-  agentId: string;
-  description?: string;
 }
 
 interface DashboardMessage {
@@ -579,10 +481,6 @@ function generateEphemeralIdentity(prefix = 'visitor'): Identity {
 const state = {
   agents: new Map<string, AgentState>(),
   channels: new Map<string, ChannelState>(),
-  leaderboard: [] as Array<{ id: string; nick?: string; elo: number }>,
-  proposals: new Map<string, ProposalState>(),
-  disputes: new Map<string, DisputeState>(),
-  skills: [] as Skill[],
   connected: false,
   dashboardAgent: null as { id: string | null; nick: string } | null
 };
@@ -848,168 +746,14 @@ function handleAgentChatMessage(msg: AgentChatMsg): void {
       break;
     }
 
-    case 'PROPOSAL': {
-      const proposal: ProposalState = {
-        id: msg.proposal_id!,
-        from: msg.from!,
-        to: msg.to!,
-        task: msg.task!,
-        amount: msg.amount,
-        currency: msg.currency,
-        status: msg.status || 'pending',
-        eloStake: msg.elo_stake,
-        createdAt: msg.ts || Date.now(),
-        updatedAt: Date.now()
-      };
-      state.proposals.set(proposal.id, proposal);
-      broadcastToDashboards({ type: 'proposal_update', data: proposal });
-      break;
-    }
-
-    case 'ACCEPT':
-    case 'REJECT':
-    case 'COMPLETE':
-    case 'DISPUTE':
-      if (msg.proposal_id && state.proposals.has(msg.proposal_id)) {
-        const p = state.proposals.get(msg.proposal_id)!;
-        p.status = msg.type.toLowerCase();
-        p.updatedAt = Date.now();
-        broadcastToDashboards({ type: 'proposal_update', data: p });
-      }
-      break;
-
-    case 'SEARCH_RESULTS':
-      state.skills = msg.results || [];
-      broadcastToDashboards({ type: 'skills_update', data: state.skills });
-      break;
-
     case 'ERROR':
       console.error('AgentChat error:', msg.code, msg.message);
       break;
 
-    // Agentcourt dispute messages
-    case 'DISPUTE_INTENT_ACK': {
-      const dispute: DisputeState = {
-        id: msg.dispute_id!,
-        proposal_id: msg.proposal_id!,
-        disputant: msg.disputant || msg.from || '',
-        respondent: msg.respondent || '',
-        reason: msg.reason || '',
-        phase: 'reveal_pending',
-        arbiters: [],
-        created_at: msg.ts || Date.now(),
-        updated_at: Date.now()
-      };
-      state.disputes.set(dispute.id, dispute);
-      broadcastToDashboards({ type: 'dispute_update', data: dispute });
-      break;
-    }
-
-    case 'DISPUTE_REVEALED': {
-      const d = msg.dispute_id && state.disputes.get(msg.dispute_id);
-      if (d) {
-        d.phase = 'panel_selection';
-        d.updated_at = Date.now();
-        broadcastToDashboards({ type: 'dispute_update', data: d });
-      }
-      break;
-    }
-
-    case 'PANEL_FORMED': {
-      const d = msg.dispute_id && state.disputes.get(msg.dispute_id);
-      if (d) {
-        d.phase = 'arbiter_response';
-        d.arbiters = (msg.arbiters || []).map(a => ({ ...a }));
-        d.updated_at = Date.now();
-        broadcastToDashboards({ type: 'dispute_update', data: d });
-      }
-      break;
-    }
-
-    case 'ARBITER_ASSIGNED': {
-      // Individual arbiter notification — update slot status if we have the dispute
-      const d = msg.dispute_id && state.disputes.get(msg.dispute_id);
-      if (d && msg.arbiter) {
-        const slot = d.arbiters.find(a => a.agent_id === msg.arbiter);
-        if (slot && msg.arbiter_status) {
-          slot.status = msg.arbiter_status;
-          if (msg.arbiter_status === 'accepted') slot.accepted_at = Date.now();
-        }
-        // Phase transitions (to evidence, fallback) are handled by dedicated
-        // server messages (EVIDENCE_RECEIVED, DISPUTE_FALLBACK) — no guessing here
-        d.updated_at = Date.now();
-        broadcastToDashboards({ type: 'dispute_update', data: d });
-      }
-      break;
-    }
-
-    case 'EVIDENCE_RECEIVED': {
-      const d = msg.dispute_id && state.disputes.get(msg.dispute_id);
-      if (d) {
-        d.phase = 'evidence';
-        const evidence: DisputeEvidence = {
-          items: msg.items || [],
-          statement: msg.statement || '',
-          submitted_at: Date.now()
-        };
-        if (msg.party === d.disputant) {
-          d.disputant_evidence = evidence;
-        } else if (msg.party === d.respondent) {
-          d.respondent_evidence = evidence;
-        }
-        d.updated_at = Date.now();
-        broadcastToDashboards({ type: 'dispute_update', data: d });
-      }
-      break;
-    }
-
-    case 'CASE_READY': {
-      const d = msg.dispute_id && state.disputes.get(msg.dispute_id);
-      if (d) {
-        d.phase = 'deliberation';
-        d.vote_deadline = msg.vote_deadline;
-        d.updated_at = Date.now();
-        broadcastToDashboards({ type: 'dispute_update', data: d });
-      }
-      break;
-    }
-
-    case 'VERDICT': {
-      const d = msg.dispute_id && state.disputes.get(msg.dispute_id);
-      if (d) {
-        d.phase = 'resolved';
-        d.verdict = msg.verdict;
-        d.rating_changes = msg.rating_changes;
-        d.resolved_at = msg.resolved_at || Date.now();
-        if (msg.votes) {
-          msg.votes.forEach(v => {
-            const slot = d.arbiters.find(a => a.agent_id === v.arbiter);
-            if (slot) {
-              slot.status = 'voted';
-              slot.vote = { verdict: v.verdict, reasoning: v.reasoning, voted_at: v.voted_at };
-            }
-          });
-        }
-        d.updated_at = Date.now();
-        broadcastToDashboards({ type: 'dispute_update', data: d });
-      }
-      break;
-    }
-
-    case 'DISPUTE_FALLBACK': {
-      const d = msg.dispute_id && state.disputes.get(msg.dispute_id);
-      if (d) {
-        d.phase = 'fallback';
-        d.updated_at = Date.now();
-        broadcastToDashboards({ type: 'dispute_update', data: d });
-      }
-      break;
-    }
-
     case 'TYPING':
       broadcastToDashboards({
         type: 'typing',
-        data: { from: msg.from, from_name: msg.from_name, channel: msg.channel }
+        data: { from: msg.from, from_name: (msg as any).from_name, channel: msg.channel }
       });
       break;
 
@@ -1045,7 +789,7 @@ function handleIncomingMessage(msg: AgentChatMsg): void {
   }
 
   // Cache from_name so future lookups (file transfers, typing) resolve correctly
-  const senderName = msg.from_name || msg.name;
+  const senderName = (msg as any).from_name || msg.name;
   if (msg.from && senderName && !agentNameOverrides[msg.from]) {
     agentNameOverrides[msg.from] = senderName;
   }
@@ -1057,8 +801,7 @@ function handleIncomingMessage(msg: AgentChatMsg): void {
     to: channel,
     content: msg.content!,
     ts: msg.ts || Date.now(),
-    isProposal: false
-  };
+};
 
   state.channels.get(channel)!.messages.push(message);
   broadcastToDashboards({ type: 'message', data: message });
@@ -1376,8 +1119,7 @@ function handleFileTransferDM(client: DashboardClient, fromId: string, ft: Recor
               totalSize: incoming.totalSize,
             }),
             ts: Date.now(),
-            isProposal: false
-          };
+                };
           broadcastToDashboards({ type: 'message', data: fileMsg });
         }
       }
@@ -1412,8 +1154,7 @@ function handleFileTransferDM(client: DashboardClient, fromId: string, ft: Recor
                 totalSize: transfer.totalSize,
               }),
               ts: Date.now(),
-              isProposal: false
-            };
+                    };
             broadcastToDashboards({ type: 'message', data: fileMsg });
           }
         }
@@ -1552,10 +1293,6 @@ function getStateSnapshot(): Record<string, unknown> {
     messages: Object.fromEntries(
       [...state.channels.entries()].map(([name, ch]) => [name, ch.messages.toArray()])
     ),
-    leaderboard: state.leaderboard,
-    proposals: [...state.proposals.values()],
-    disputes: [...state.disputes.values()],
-    skills: state.skills,
     dashboardAgent: state.dashboardAgent
   };
 }
@@ -1637,18 +1374,6 @@ function handleDashboardMessage(client: DashboardClient, msg: DashboardMessage):
 
     case 'refresh_channels':
       send({ type: 'LIST_CHANNELS' });
-      break;
-
-    case 'search_skills':
-      send({ type: 'SEARCH_SKILLS', query: msg.data || {} });
-      break;
-
-    case 'accept_proposal':
-      if (client.mode === 'lurk') {
-        client.ws.send(JSON.stringify({ type: 'error', data: { code: 'LURK_MODE', message: 'Cannot accept in lurk mode' } }));
-        return;
-      }
-      client.ws.send(JSON.stringify({ type: 'error', data: { code: 'NOT_IMPLEMENTED', message: 'Proposal actions require signing' } }));
       break;
 
     case 'set_agent_name': {
@@ -1824,68 +1549,6 @@ app.get('/api/health', (_req: Request, res: Response) => {
   });
 });
 
-// Kill switch endpoint
-const KILLSWITCH_PIN = '141414';
-const killswitchAttempts = new Map<string, { count: number; lastAttempt: number }>();
-
-app.post('/api/killswitch', express.json({ limit: '1kb' }), (req: Request, res: Response) => {
-  const clientIp = req.ip || 'unknown';
-
-  // Brute-force protection: 5 attempts per IP, 60s lockout
-  const attempts = killswitchAttempts.get(clientIp);
-  if (attempts && attempts.count >= 5) {
-    if (Date.now() - attempts.lastAttempt < 60000) {
-      res.status(429).json({ error: 'Too many attempts, try again later' });
-      return;
-    }
-    killswitchAttempts.delete(clientIp);
-  }
-
-  const { pin } = req.body || {};
-  if (!pin || typeof pin !== 'string') {
-    res.status(400).json({ error: 'PIN required' });
-    return;
-  }
-
-  // Timing-safe PIN comparison
-  const pinBuf = Buffer.from(pin);
-  const correctBuf = Buffer.from(KILLSWITCH_PIN);
-  if (pinBuf.length !== correctBuf.length || !crypto.timingSafeEqual(pinBuf, correctBuf)) {
-    console.warn(`[KILLSWITCH] Failed PIN attempt from ${clientIp}`);
-    const current = killswitchAttempts.get(clientIp) || { count: 0, lastAttempt: 0 };
-    killswitchAttempts.set(clientIp, { count: current.count + 1, lastAttempt: Date.now() });
-    res.status(403).json({ error: 'Invalid PIN' });
-    return;
-  }
-
-  console.warn('[KILLSWITCH] ACTIVATED — initiating full lockdown');
-
-  // Broadcast lockdown to all dashboard clients
-  broadcastToDashboards({ type: 'lockdown', data: { message: 'KILL SWITCH ACTIVATED', ts: Date.now() } });
-
-  // Respond before killing everything
-  res.json({ status: 'lockdown_initiated' });
-
-  // Execute lockdown sequence after response flushes
-  setTimeout(() => {
-    // Kill Claude Code / agent processes
-    try { execSync('pkill -f "claude" || true', { timeout: 5000 }); } catch { /* ok */ }
-
-    // Lock macOS screen
-    try { execSync('pmset displaysleepnow', { timeout: 5000 }); } catch { /* ok */ }
-
-    // Close all dashboard WebSocket connections
-    dashboardClients.forEach(client => {
-      try { client.ws.close(1000, 'Lockdown'); } catch { /* ok */ }
-    });
-
-    // Shut down server
-    console.warn('[KILLSWITCH] Shutting down server');
-    server.close(() => process.exit(0));
-    setTimeout(() => process.exit(1), 3000); // Force exit fallback
-  }, 500);
-});
-
 // File upload endpoint
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -1983,117 +1646,6 @@ app.get('/api/download/:transferId/:fileIndex', (req: Request, res: Response) =>
   res.setHeader('Content-Type', 'application/octet-stream');
   res.setHeader('Content-Length', file.data.length);
   return res.send(file.data);
-});
-
-// ============ Anthropic API Token Proxy ============
-// Agents set ANTHROPIC_BASE_URL=http://localhost:3000/proxy/<agent-name>
-// All API calls are forwarded to Anthropic and token usage is logged.
-
-app.all('/proxy/:agentName/*', async (req: Request, res: Response) => {
-  const agentName = req.params.agentName;
-  const apiPath = '/' + (req.params as Record<string, string>)[0]; // everything after /proxy/:agentName/
-  const targetUrl = `https://api.anthropic.com${apiPath}`;
-
-  // Collect request body
-  const chunks: Buffer[] = [];
-  req.on('data', (chunk: Buffer) => chunks.push(chunk));
-  await new Promise<void>(resolve => req.on('end', resolve));
-  const bodyBuf = Buffer.concat(chunks);
-
-  let model = 'unknown';
-  let isStreaming = false;
-  try {
-    const parsed = JSON.parse(bodyBuf.toString());
-    if (parsed.model) model = parsed.model;
-    if (parsed.stream) isStreaming = true;
-  } catch { /* not JSON, that's fine */ }
-
-  // Forward headers (pass through auth, content-type, etc.)
-  const forwardHeaders: Record<string, string> = {};
-  for (const [key, val] of Object.entries(req.headers)) {
-    if (key === 'host' || key === 'connection' || key === 'content-length') continue;
-    if (typeof val === 'string') forwardHeaders[key] = val;
-  }
-
-  try {
-    const upstream = await fetch(targetUrl, {
-      method: req.method,
-      headers: forwardHeaders,
-      body: req.method !== 'GET' && req.method !== 'HEAD' ? bodyBuf : undefined,
-    });
-
-    // Copy response headers
-    upstream.headers.forEach((val, key) => {
-      if (key !== 'transfer-encoding' && key !== 'content-encoding') {
-        res.setHeader(key, val);
-      }
-    });
-    res.status(upstream.status);
-
-    if (isStreaming && upstream.body) {
-      // Stream the response back, accumulate for usage parsing
-      const reader = upstream.body.getReader();
-      let usageFound = false;
-      let inputTokens = 0;
-      let outputTokens = 0;
-
-      const pump = async () => {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          res.write(value);
-
-          // Parse SSE events looking for message_delta with usage
-          if (!usageFound) {
-            const text = Buffer.from(value).toString();
-            // Look for usage in SSE data events
-            const lines = text.split('\n');
-            for (const line of lines) {
-              if (!line.startsWith('data: ')) continue;
-              const data = line.slice(6);
-              if (data === '[DONE]') continue;
-              try {
-                const evt = JSON.parse(data);
-                if (evt.type === 'message_start' && evt.message?.usage) {
-                  inputTokens = evt.message.usage.input_tokens || 0;
-                }
-                if (evt.type === 'message_delta' && evt.usage) {
-                  outputTokens = evt.usage.output_tokens || 0;
-                  usageFound = true;
-                }
-              } catch { /* partial JSON, skip */ }
-            }
-          }
-        }
-      };
-      await pump();
-      res.end();
-
-      const total = inputTokens + outputTokens;
-      if (inputTokens || outputTokens) {
-        console.log(`[TOKEN] ${agentName} called ${model}: ${inputTokens} input + ${outputTokens} output = ${total} total tokens`);
-      }
-    } else {
-      // Non-streaming: buffer full response
-      const respBuf = Buffer.from(await upstream.arrayBuffer());
-      res.end(respBuf);
-
-      // Parse usage from response body
-      try {
-        const respJson = JSON.parse(respBuf.toString());
-        if (respJson.usage) {
-          const { input_tokens = 0, output_tokens = 0 } = respJson.usage;
-          const total = input_tokens + output_tokens;
-          console.log(`[TOKEN] ${agentName} called ${model}: ${input_tokens} input + ${output_tokens} output = ${total} total tokens`);
-        }
-      } catch { /* not JSON */ }
-    }
-  } catch (err) {
-    console.error(`[TOKEN] ${agentName} proxy error: ${(err as Error).message}`);
-    if (!res.headersSent) {
-      res.status(502).json({ error: 'Proxy error', message: (err as Error).message });
-    }
-  }
 });
 
 // Static files (for built React app)

@@ -1,4 +1,16 @@
 import { useState, useEffect, useRef, useReducer, useCallback, createContext, FormEvent } from 'react';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
+
+// ============ Markdown ============
+
+marked.setOptions({ breaks: false });
+
+function renderMarkdown(content: string): string {
+  const raw = marked.parse(content);
+  const html = typeof raw === 'string' ? raw : '';
+  return DOMPurify.sanitize(html);
+}
 
 // ============ Types ============
 
@@ -28,78 +40,6 @@ interface Message {
   to: string;
   content: string;
   ts: number;
-  isProposal: boolean;
-}
-
-interface Proposal {
-  id: string;
-  from: string;
-  to: string;
-  task: string;
-  amount?: number;
-  currency?: string;
-  status: string;
-  eloStake?: number;
-  createdAt: number;
-  updatedAt: number;
-}
-
-interface Skill {
-  capability: string;
-  rate?: number;
-  currency?: string;
-  agentId: string;
-  description?: string;
-}
-
-// Mirror of server/src/index.ts dispute types — keep in sync
-interface DisputeEvidenceItem {
-  kind: string;
-  label: string;
-  value: string;
-  url?: string;
-}
-
-interface DisputeEvidence {
-  items: DisputeEvidenceItem[];
-  statement: string;
-  submitted_at: number;
-}
-
-interface ArbiterSlot {
-  agent_id: string;
-  status: string;
-  accepted_at?: number;
-  vote?: {
-    verdict: string;
-    reasoning: string;
-    voted_at: number;
-  };
-}
-
-interface Dispute {
-  id: string;
-  proposal_id: string;
-  disputant: string;
-  respondent: string;
-  reason: string;
-  phase: string;
-  arbiters: ArbiterSlot[];
-  disputant_evidence?: DisputeEvidence;
-  respondent_evidence?: DisputeEvidence;
-  verdict?: string;
-  rating_changes?: Record<string, { old: number; new: number; delta: number }>;
-  created_at: number;
-  evidence_deadline?: number;
-  vote_deadline?: number;
-  resolved_at?: number;
-  updated_at: number;
-}
-
-interface LeaderboardEntry {
-  id: string;
-  nick?: string;
-  elo: number;
 }
 
 interface DashboardAgent {
@@ -133,10 +73,6 @@ interface DashboardState {
   agents: Record<string, Agent>;
   channels: Record<string, Channel>;
   messages: Record<string, Message[]>;
-  leaderboard: LeaderboardEntry[];
-  skills: Skill[];
-  proposals: Record<string, Proposal>;
-  disputes: Record<string, Dispute>;
   selectedChannel: string;
   selectedAgent: Agent | null;
   rightPanel: string;
@@ -150,8 +86,6 @@ interface DashboardState {
   logs: LogEntry[];
   logsOpen: boolean;
   pulseOpen: boolean;
-  killSwitchOpen: boolean;
-  lockdown: boolean;
 }
 
 type DashboardAction =
@@ -160,10 +94,6 @@ type DashboardAction =
   | { type: 'DISCONNECTED' }
   | { type: 'MESSAGE'; data: Message }
   | { type: 'AGENT_UPDATE'; data: Agent }
-  | { type: 'PROPOSAL_UPDATE'; data: Proposal }
-  | { type: 'DISPUTE_UPDATE'; data: Dispute }
-  | { type: 'LEADERBOARD_UPDATE'; data: LeaderboardEntry[] }
-  | { type: 'SKILLS_UPDATE'; data: Skill[] }
   | { type: 'SET_MODE'; mode: string }
   | { type: 'SELECT_CHANNEL'; channel: string }
   | { type: 'SELECT_AGENT'; agent: Agent }
@@ -182,8 +112,6 @@ type DashboardAction =
   | { type: 'TOGGLE_PULSE' }
   | { type: 'CONNECTION_ERROR'; error: string }
   | { type: 'CONNECTING' }
-  | { type: 'TOGGLE_KILLSWITCH' }
-  | { type: 'LOCKDOWN' }
   | { type: 'AGENTS_BULK_UPDATE'; data: Agent[] }
   | { type: 'CHANNELS_BULK_UPDATE'; data: Channel[] }
   | { type: 'SET_DASHBOARD_AGENT'; data: { agentId: string; nick: string; publicKey?: string; secretKey?: string } }
@@ -193,10 +121,6 @@ interface StateSyncPayload {
   agents: Agent[];
   channels: Channel[];
   messages: Record<string, Message[]>;
-  leaderboard: LeaderboardEntry[];
-  skills: Skill[];
-  proposals: Proposal[];
-  disputes: Dispute[];
   dashboardAgent: DashboardAgent;
 }
 
@@ -248,13 +172,9 @@ const initialState: DashboardState = {
   agents: {},
   channels: {},
   messages: loadPersistedMessages(),
-  leaderboard: [],
-  skills: [],
-  proposals: {},
-  disputes: {},
   selectedChannel: '#general',
   selectedAgent: null,
-  rightPanel: 'proposals',
+  rightPanel: 'detail',
   dashboardAgent: null,
   unreadCounts: {},
   activityCounts: {},
@@ -264,9 +184,7 @@ const initialState: DashboardState = {
   saveModal: null,
   logs: [],
   logsOpen: false,
-  pulseOpen: false,
-  killSwitchOpen: false,
-  lockdown: false
+  pulseOpen: false
 };
 
 function reducer(state: DashboardState, action: DashboardAction): DashboardState {
@@ -292,10 +210,6 @@ function reducer(state: DashboardState, action: DashboardAction): DashboardState
         agents: Object.fromEntries(action.data.agents.map(a => [a.id, a])),
         channels: Object.fromEntries(action.data.channels.map(c => [c.name, c])),
         messages: mergedMessages,
-        leaderboard: action.data.leaderboard || [],
-        skills: action.data.skills || [],
-        proposals: Object.fromEntries((action.data.proposals || []).map(p => [p.id, p])),
-        disputes: Object.fromEntries((action.data.disputes || []).map(d => [d.id, d])),
         dashboardAgent: action.data.dashboardAgent
       };
     }
@@ -346,20 +260,6 @@ function reducer(state: DashboardState, action: DashboardAction): DashboardState
         activityCounts: newActivity
       };
     }
-    case 'PROPOSAL_UPDATE':
-      return {
-        ...state,
-        proposals: { ...state.proposals, [action.data.id]: action.data }
-      };
-    case 'DISPUTE_UPDATE':
-      return {
-        ...state,
-        disputes: { ...state.disputes, [action.data.id]: action.data }
-      };
-    case 'LEADERBOARD_UPDATE':
-      return { ...state, leaderboard: action.data };
-    case 'SKILLS_UPDATE':
-      return { ...state, skills: action.data };
     case 'SET_MODE':
       if (typeof window !== 'undefined') {
         localStorage.setItem('dashboardMode', action.mode);
@@ -414,10 +314,6 @@ function reducer(state: DashboardState, action: DashboardAction): DashboardState
       return { ...state, connectionStatus: 'error', connectionError: action.error };
     case 'CONNECTING':
       return { ...state, connectionStatus: 'connecting', connectionError: null };
-    case 'TOGGLE_KILLSWITCH':
-      return { ...state, killSwitchOpen: !state.killSwitchOpen };
-    case 'LOCKDOWN':
-      return { ...state, lockdown: true, killSwitchOpen: false };
     case 'AGENTS_BULK_UPDATE':
       return { ...state, agents: Object.fromEntries(action.data.map(a => [a.id, a])) };
     case 'CHANNELS_BULK_UPDATE':
@@ -468,6 +364,12 @@ function safeUrl(url: string): string | null {
 function formatTime(ts: number): string {
   const d = new Date(ts);
   return d.toLocaleTimeString('en-US', { hour12: false });
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 // ============ WebSocket Hook ============
@@ -532,18 +434,6 @@ function useWebSocket(dispatch: React.Dispatch<DashboardAction>): WsSendFn {
             break;
           case 'channel_update':
             dispatch({ type: 'CHANNELS_BULK_UPDATE', data: msg.data });
-            break;
-          case 'proposal_update':
-            dispatch({ type: 'PROPOSAL_UPDATE', data: msg.data });
-            break;
-          case 'dispute_update':
-            dispatch({ type: 'DISPUTE_UPDATE', data: msg.data });
-            break;
-          case 'leaderboard_update':
-            dispatch({ type: 'LEADERBOARD_UPDATE', data: msg.data });
-            break;
-          case 'skills_update':
-            dispatch({ type: 'SKILLS_UPDATE', data: msg.data });
             break;
           case 'typing':
             dispatch({ type: 'TYPING', data: msg.data });
@@ -626,9 +516,6 @@ function useWebSocket(dispatch: React.Dispatch<DashboardAction>): WsSendFn {
           case 'log_history':
             dispatch({ type: 'LOG_HISTORY', data: msg.data });
             break;
-          case 'lockdown':
-            dispatch({ type: 'LOCKDOWN' });
-            break;
           case 'error':
             console.error('Server error:', msg.data?.code, msg.data?.message);
             if (msg.data?.code === 'LURK_MODE') {
@@ -641,7 +528,7 @@ function useWebSocket(dispatch: React.Dispatch<DashboardAction>): WsSendFn {
       };
 
       ws.current.onerror = () => {
-        dispatch({ type: 'CONNECTION_ERROR', error: 'Connection failed — is the server running?' });
+        dispatch({ type: 'CONNECTION_ERROR', error: 'Connection failed \u2014 is the server running?' });
       };
 
       ws.current.onclose = () => {
@@ -711,7 +598,7 @@ function TopBar({ state, dispatch, send }: { state: DashboardState; dispatch: Re
   return (
     <div className="topbar">
       <div className="topbar-left">
-        <span className="logo">AgentChat</span>
+        <span className="logo">AgentForce</span>
         <span className={`status ${state.connected ? 'online' : 'offline'}`}>
           {state.connected ? 'CONNECTED' : 'DISCONNECTED'}
         </span>
@@ -720,13 +607,6 @@ function TopBar({ state, dispatch, send }: { state: DashboardState; dispatch: Re
         {state.dashboardAgent && (
           <span className="dashboard-nick">as {state.dashboardAgent.nick}</span>
         )}
-        <button
-          className="killswitch-btn"
-          onClick={() => dispatch({ type: 'TOGGLE_KILLSWITCH' })}
-          title="Emergency Kill Switch"
-        >
-          KILL
-        </button>
         <button
           className={`pulse-btn ${state.pulseOpen ? 'active' : ''}`}
           onClick={() => dispatch({ type: 'TOGGLE_PULSE' })}
@@ -821,20 +701,11 @@ function Sidebar({ state, dispatch, sidebarWidth }: { state: DashboardState; dis
           ))}
         </div>
       </div>
-
-      <div className="quick-actions">
-        <button onClick={() => dispatch({ type: 'SET_RIGHT_PANEL', panel: 'leaderboard' })}>Leaderboard</button>
-        <button onClick={() => dispatch({ type: 'SET_RIGHT_PANEL', panel: 'skills' })}>Skills</button>
-        <button onClick={() => dispatch({ type: 'SET_RIGHT_PANEL', panel: 'proposals' })}>Proposals</button>
-        <button onClick={() => dispatch({ type: 'SET_RIGHT_PANEL', panel: 'disputes' })}>Disputes</button>
-      </div>
     </div>
   );
 }
 
-// ============ Slurp helpers (browser-side) ============
-
-// ============ Components ============
+// ============ Message Feed ============
 
 function MessageFeed({ state, dispatch, send }: { state: DashboardState; dispatch: React.Dispatch<DashboardAction>; send: WsSendFn }) {
   const [input, setInput] = useState('');
@@ -964,7 +835,7 @@ function MessageFeed({ state, dispatch, send }: { state: DashboardState; dispatc
                   </span>
                 </span>
               ) : (
-                <span className="content">{msg.content}</span>
+                <span className="content" dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
               )}
             </div>
           );
@@ -999,288 +870,12 @@ function MessageFeed({ state, dispatch, send }: { state: DashboardState; dispatc
   );
 }
 
+// ============ Right Panel ============
+
 function RightPanel({ state, dispatch, send, panelWidth }: { state: DashboardState; dispatch: React.Dispatch<DashboardAction>; send: WsSendFn; panelWidth: number }) {
   const panelStyle = { width: panelWidth };
   const [renameValue, setRenameValue] = useState('');
   const [isRenaming, setIsRenaming] = useState(false);
-  const [skillsFilter, setSkillsFilter] = useState('');
-
-  if (state.rightPanel === 'leaderboard') {
-    return (
-      <div className="right-panel" style={panelStyle}>
-        <h3>LEADERBOARD</h3>
-        <div className="leaderboard">
-          {state.leaderboard.map((entry, i) => (
-            <div key={entry.id} className="leaderboard-entry">
-              <span className="rank">#{i + 1}</span>
-              <span className="nick" style={{ color: agentColor(entry.nick || entry.id) }}>
-                {entry.nick || entry.id}
-              </span>
-              <span className="agent-id">{entry.id}</span>
-              <span className="elo">{entry.elo}</span>
-            </div>
-          ))}
-          {state.leaderboard.length === 0 && <div className="empty">No data</div>}
-        </div>
-      </div>
-    );
-  }
-
-  if (state.rightPanel === 'skills') {
-    const filteredSkills = state.skills.filter(s =>
-      !skillsFilter ||
-      s.capability.toLowerCase().includes(skillsFilter.toLowerCase()) ||
-      (s.description && s.description.toLowerCase().includes(skillsFilter.toLowerCase()))
-    );
-    return (
-      <div className="right-panel" style={panelStyle}>
-        <h3>SKILLS MARKETPLACE</h3>
-        <input
-          type="text"
-          className="skills-search"
-          value={skillsFilter}
-          onChange={(e) => setSkillsFilter(e.target.value)}
-          placeholder="Filter by capability..."
-        />
-        <div className="skills">
-          {filteredSkills.map((skill, i) => (
-            <div key={i} className="skill-entry">
-              <div className="skill-header">
-                <span className="capability">{skill.capability}</span>
-                <span className="rate">{skill.rate} {skill.currency}</span>
-              </div>
-              <div className="skill-agent">{skill.agentId}</div>
-              <div className="skill-desc">{skill.description}</div>
-            </div>
-          ))}
-          {filteredSkills.length === 0 && <div className="empty">{skillsFilter ? 'No matching skills' : 'No skills registered'}</div>}
-        </div>
-      </div>
-    );
-  }
-
-  if (state.rightPanel === 'proposals') {
-    const proposals = Object.values(state.proposals);
-    return (
-      <div className="right-panel" style={panelStyle}>
-        <h3>PROPOSALS ({proposals.length})</h3>
-        <div className="proposals">
-          {proposals.map(p => (
-            <div key={p.id} className={`proposal-entry status-${p.status}`}>
-              <div className="proposal-header">
-                <span className={`status-badge ${p.status}`}>{p.status}</span>
-                {p.amount && <span className="amount">{p.amount} {p.currency}</span>}
-              </div>
-              <div className="proposal-task">{p.task}</div>
-              <div className="proposal-parties">
-                <span style={{ color: agentColor(p.from) }}>{p.from}</span>
-                <span className="arrow"> → </span>
-                <span style={{ color: agentColor(p.to) }}>{p.to}</span>
-              </div>
-              {p.status === 'pending' && state.mode === 'participate' && (
-                <button
-                  className="claim-btn"
-                  onClick={() => send({ type: 'accept_proposal', data: { proposalId: p.id } })}
-                >
-                  Claim Task
-                </button>
-              )}
-            </div>
-          ))}
-          {proposals.length === 0 && <div className="empty">No active proposals</div>}
-        </div>
-      </div>
-    );
-  }
-
-  if (state.rightPanel === 'disputes') {
-    const disputes = Object.values(state.disputes).sort((a, b) => b.updated_at - a.updated_at);
-    return (
-      <div className="right-panel" style={panelStyle}>
-        <h3>DISPUTES ({disputes.length})</h3>
-        <div className="disputes">
-          {disputes.map(d => (
-            <div
-              key={d.id}
-              className={`dispute-entry phase-${d.phase}`}
-              onClick={() => dispatch({ type: 'SET_RIGHT_PANEL', panel: `dispute:${d.id}` })}
-            >
-              <div className="dispute-header">
-                <span className={`phase-badge ${d.phase}`}>{d.phase}</span>
-                {d.verdict && <span className={`verdict-badge ${d.verdict}`}>{d.verdict}</span>}
-              </div>
-              <div className="dispute-reason">{d.reason.length > 60 ? d.reason.slice(0, 60) + '...' : d.reason}</div>
-              <div className="dispute-parties">
-                <span style={{ color: agentColor(state.agents[d.disputant]?.nick || d.disputant) }}>
-                  {state.agents[d.disputant]?.nick || d.disputant}
-                </span>
-                <span className="vs"> vs </span>
-                <span style={{ color: agentColor(state.agents[d.respondent]?.nick || d.respondent) }}>
-                  {state.agents[d.respondent]?.nick || d.respondent}
-                </span>
-              </div>
-              <div className="dispute-meta">
-                <span className="time">{formatTime(d.created_at)}</span>
-                <span className="arbiter-count">{d.arbiters.filter(a => a.status === 'accepted').length}/3 arbiters</span>
-              </div>
-            </div>
-          ))}
-          {disputes.length === 0 && <div className="empty">No active disputes</div>}
-        </div>
-      </div>
-    );
-  }
-
-  if (state.rightPanel.startsWith('dispute:')) {
-    const disputeId = state.rightPanel.slice('dispute:'.length);
-    const dispute = state.disputes[disputeId];
-    if (!dispute) {
-      return (
-        <div className="right-panel" style={panelStyle}>
-          <button className="back-btn" onClick={() => dispatch({ type: 'SET_RIGHT_PANEL', panel: 'disputes' })}>Back to Disputes</button>
-          <div className="empty">Dispute not found</div>
-        </div>
-      );
-    }
-
-    const getAgentName = (id: string) => state.agents[id]?.nick || id;
-
-    return (
-      <div className="right-panel dispute-detail" style={panelStyle}>
-        <button className="back-btn" onClick={() => dispatch({ type: 'SET_RIGHT_PANEL', panel: 'disputes' })}>Back to Disputes</button>
-        <h3>DISPUTE DETAIL</h3>
-
-        <div className="dispute-phase-bar">
-          <span className={`phase-badge ${dispute.phase}`}>{dispute.phase.replace('_', ' ')}</span>
-          {dispute.verdict && <span className={`verdict-badge ${dispute.verdict}`}>Verdict: {dispute.verdict}</span>}
-        </div>
-
-        <div className="dispute-section">
-          <div className="section-label">Parties</div>
-          <div className="dispute-parties-detail">
-            <div className="party disputant">
-              <span className="party-role">Disputant</span>
-              <span className="party-name" style={{ color: agentColor(getAgentName(dispute.disputant)) }}>
-                {getAgentName(dispute.disputant)}
-              </span>
-            </div>
-            <span className="vs">vs</span>
-            <div className="party respondent">
-              <span className="party-role">Respondent</span>
-              <span className="party-name" style={{ color: agentColor(getAgentName(dispute.respondent)) }}>
-                {getAgentName(dispute.respondent)}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="dispute-section">
-          <div className="section-label">Reason</div>
-          <div className="dispute-reason-full">{dispute.reason}</div>
-        </div>
-
-        <div className="dispute-section">
-          <div className="section-label">Arbiter Panel</div>
-          <div className="arbiter-panel">
-            {dispute.arbiters.map((a, i) => (
-              <div key={i} className={`arbiter-slot status-${a.status}`}>
-                <span className="arbiter-name" style={{ color: agentColor(getAgentName(a.agent_id)) }}>
-                  {getAgentName(a.agent_id)}
-                </span>
-                <span className={`arbiter-status ${a.status}`}>{a.status}</span>
-                {a.vote && (
-                  <div className="arbiter-vote-info">
-                    <span className={`vote-verdict ${a.vote.verdict}`}>{a.vote.verdict}</span>
-                    <span className="vote-reasoning">{a.vote.reasoning}</span>
-                  </div>
-                )}
-              </div>
-            ))}
-            {dispute.arbiters.length === 0 && <div className="empty">Panel not yet formed</div>}
-          </div>
-        </div>
-
-        {(dispute.disputant_evidence || dispute.respondent_evidence) && (
-          <div className="dispute-section">
-            <div className="section-label">Evidence</div>
-            {dispute.disputant_evidence && (
-              <div className="evidence-block">
-                <div className="evidence-party">
-                  <span style={{ color: agentColor(getAgentName(dispute.disputant)) }}>
-                    {getAgentName(dispute.disputant)}
-                  </span>
-                  <span className="evidence-count">({dispute.disputant_evidence.items.length} items)</span>
-                </div>
-                <div className="evidence-statement">{dispute.disputant_evidence.statement}</div>
-                <div className="evidence-items">
-                  {dispute.disputant_evidence.items.map((item, i) => (
-                    <div key={i} className="evidence-item">
-                      <span className={`evidence-kind ${item.kind}`}>{item.kind}</span>
-                      <span className="evidence-label">{item.label}</span>
-                      {item.url && safeUrl(item.url) && <a href={safeUrl(item.url)!} target="_blank" rel="noopener noreferrer" className="evidence-link">View</a>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {dispute.respondent_evidence && (
-              <div className="evidence-block">
-                <div className="evidence-party">
-                  <span style={{ color: agentColor(getAgentName(dispute.respondent)) }}>
-                    {getAgentName(dispute.respondent)}
-                  </span>
-                  <span className="evidence-count">({dispute.respondent_evidence.items.length} items)</span>
-                </div>
-                <div className="evidence-statement">{dispute.respondent_evidence.statement}</div>
-                <div className="evidence-items">
-                  {dispute.respondent_evidence.items.map((item, i) => (
-                    <div key={i} className="evidence-item">
-                      <span className={`evidence-kind ${item.kind}`}>{item.kind}</span>
-                      <span className="evidence-label">{item.label}</span>
-                      {item.url && safeUrl(item.url) && <a href={safeUrl(item.url)!} target="_blank" rel="noopener noreferrer" className="evidence-link">View</a>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {dispute.rating_changes && Object.keys(dispute.rating_changes).length > 0 && (
-          <div className="dispute-section">
-            <div className="section-label">Rating Changes</div>
-            <div className="rating-changes">
-              {Object.entries(dispute.rating_changes).map(([agentId, change]) => (
-                <div key={agentId} className={`rating-change ${change.delta > 0 ? 'positive' : change.delta < 0 ? 'negative' : 'neutral'}`}>
-                  <span className="rating-agent" style={{ color: agentColor(getAgentName(agentId)) }}>
-                    {getAgentName(agentId)}
-                  </span>
-                  <span className="rating-delta">{change.delta > 0 ? '+' : ''}{change.delta}</span>
-                  <span className="rating-value">{change.old} → {change.new}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="dispute-section">
-          <div className="section-label">Timeline</div>
-          <div className="dispute-timeline">
-            <div className="timeline-entry">Filed: {new Date(dispute.created_at).toLocaleString()}</div>
-            {dispute.evidence_deadline && (
-              <div className="timeline-entry">Evidence deadline: {new Date(dispute.evidence_deadline).toLocaleString()}</div>
-            )}
-            {dispute.vote_deadline && (
-              <div className="timeline-entry">Vote deadline: {new Date(dispute.vote_deadline).toLocaleString()}</div>
-            )}
-            {dispute.resolved_at && (
-              <div className="timeline-entry">Resolved: {new Date(dispute.resolved_at).toLocaleString()}</div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   // Agent detail
   const agent = state.selectedAgent;
@@ -1301,11 +896,6 @@ function RightPanel({ state, dispatch, send, panelWidth }: { state: DashboardSta
       setRenameValue('');
     }
   };
-
-  const agentElo = state.leaderboard.find(e => e.id === agent.id);
-  const agentProposals = Object.values(state.proposals).filter(
-    p => p.from === agent.id || p.to === agent.id
-  );
 
   return (
     <div className="right-panel" style={panelStyle}>
@@ -1348,12 +938,6 @@ function RightPanel({ state, dispatch, send, panelWidth }: { state: DashboardSta
             : <span className="unverified-badge-detail">Unverified</span>
           }
         </div>
-        {agentElo && (
-          <div className="detail-elo">
-            <span className="label">ELO:</span>
-            <span className="elo-value">{agentElo.elo}</span>
-          </div>
-        )}
         {agent.channels && agent.channels.length > 0 && (
           <div className="detail-channels">
             <span className="label">Channels:</span>
@@ -1368,27 +952,12 @@ function RightPanel({ state, dispatch, send, panelWidth }: { state: DashboardSta
             ))}
           </div>
         )}
-        {agentProposals.length > 0 && (
-          <div className="detail-proposals">
-            <span className="label">Proposals:</span>
-            {agentProposals.slice(0, 5).map(p => (
-              <div key={p.id} className={`detail-proposal status-${p.status}`}>
-                <span className={`status-badge ${p.status}`}>{p.status}</span>
-                <span className="proposal-task-summary">{p.task.length > 40 ? p.task.slice(0, 40) + '...' : p.task}</span>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );
 }
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+// ============ File Transfer Components ============
 
 function DropZone({ state, dispatch, children }: { state: DashboardState; dispatch: React.Dispatch<DashboardAction>; children: React.ReactNode }) {
   const [dragging, setDragging] = useState(false);
@@ -1725,107 +1294,6 @@ function SaveModal({ state, dispatch, send }: { state: DashboardState; dispatch:
           >
             {saving ? 'Saving...' : 'Save'}
           </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============ Kill Switch ============
-
-function KillSwitchModal({ state, dispatch }: { state: DashboardState; dispatch: React.Dispatch<DashboardAction> }) {
-  const [pin, setPin] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (state.killSwitchOpen) {
-      setPin('');
-      setError('');
-      setLoading(false);
-      setTimeout(() => inputRef.current?.focus(), 100);
-    }
-  }, [state.killSwitchOpen]);
-
-  if (!state.killSwitchOpen) return null;
-
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!pin || loading) return;
-
-    setLoading(true);
-    setError('');
-
-    try {
-      const baseUrl = import.meta.env.DEV ? 'http://localhost:3000' : '';
-      const resp = await fetch(`${baseUrl}/api/killswitch`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin }),
-      });
-
-      if (resp.ok) {
-        dispatch({ type: 'LOCKDOWN' });
-      } else {
-        const data = await resp.json().catch(() => ({ error: 'Request failed' }));
-        setError(data.error || 'Invalid PIN');
-        setPin('');
-        setLoading(false);
-        inputRef.current?.focus();
-      }
-    } catch {
-      setError('Connection failed');
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="modal-overlay killswitch-overlay" onClick={() => dispatch({ type: 'TOGGLE_KILLSWITCH' })}>
-      <div className="modal killswitch-modal" onClick={e => e.stopPropagation()}>
-        <div className="killswitch-icon">!</div>
-        <h3>KILL SWITCH</h3>
-        <p className="killswitch-warning">
-          This will terminate all agents, lock the screen, and shut down the server.
-        </p>
-        <form onSubmit={handleSubmit}>
-          <input
-            ref={inputRef}
-            type="password"
-            className="killswitch-pin-input"
-            value={pin}
-            onChange={e => setPin(e.target.value)}
-            placeholder="ENTER PIN"
-            maxLength={20}
-            autoComplete="off"
-            disabled={loading}
-          />
-          {error && <div className="killswitch-error">{error}</div>}
-          <div className="modal-actions">
-            <button type="button" className="modal-btn cancel" onClick={() => dispatch({ type: 'TOGGLE_KILLSWITCH' })}>
-              Cancel
-            </button>
-            <button type="submit" className="modal-btn killswitch-confirm" disabled={!pin || loading}>
-              {loading ? 'EXECUTING...' : 'CONFIRM LOCKDOWN'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function LockdownOverlay({ state }: { state: DashboardState }) {
-  if (!state.lockdown) return null;
-
-  return (
-    <div className="lockdown-overlay">
-      <div className="lockdown-card">
-        <div className="lockdown-icon">X</div>
-        <div className="lockdown-title">SYSTEM LOCKDOWN</div>
-        <div className="lockdown-subtitle">Kill switch activated</div>
-        <div className="lockdown-detail">
-          All agents terminated. Screen locked. Server shutting down.
         </div>
       </div>
     </div>
@@ -2328,6 +1796,8 @@ function NetworkPulse({ state, dispatch }: { state: DashboardState; dispatch: Re
   );
 }
 
+// ============ Logs Panel ============
+
 function LogsPanel({ state, dispatch }: { state: DashboardState; dispatch: React.Dispatch<DashboardAction> }) {
   const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -2358,13 +1828,15 @@ function LogsPanel({ state, dispatch }: { state: DashboardState; dispatch: React
   );
 }
 
+// ============ Connection Overlay ============
+
 function ConnectionOverlay({ state }: { state: DashboardState }) {
   if (state.connectionStatus === 'ready') return null;
 
   const phases: Record<string, { label: string; detail: string }> = {
     connecting: { label: 'CONNECTING', detail: 'Establishing WebSocket link...' },
     syncing: { label: 'SYNCING', detail: 'Downloading agents, channels, messages...' },
-    disconnected: { label: 'RECONNECTING', detail: 'Connection lost — retrying...' },
+    disconnected: { label: 'RECONNECTING', detail: 'Connection lost \u2014 retrying...' },
     error: { label: 'ERROR', detail: state.connectionError || 'Unknown error' },
   };
 
@@ -2374,7 +1846,7 @@ function ConnectionOverlay({ state }: { state: DashboardState }) {
   return (
     <div className="connection-overlay">
       <div className="connection-card">
-        <div className="connection-logo">AgentChat</div>
+        <div className="connection-logo">AgentForce</div>
         {!isError && <div className="connection-spinner" />}
         {isError && <div className="connection-error-icon">!</div>}
         <div className={`connection-phase ${isError ? 'error' : ''}`}>{phase.label}</div>
@@ -2398,6 +1870,8 @@ function ConnectionOverlay({ state }: { state: DashboardState }) {
     </div>
   );
 }
+
+// ============ App ============
 
 export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -2435,8 +1909,6 @@ export default function App() {
         </div>
         <SendFileModal state={state} dispatch={dispatch} send={send} />
         <SaveModal state={state} dispatch={dispatch} send={send} />
-        <KillSwitchModal state={state} dispatch={dispatch} />
-        <LockdownOverlay state={state} />
         <ConnectionOverlay state={state} />
       </div>
     </DashboardContext.Provider>

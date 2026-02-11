@@ -1,5 +1,5 @@
 {
-  "name": "agentctl-server",
+  "name": "agentforce-server",
   "version": "1.0.0",
   "type": "module",
   "scripts": {

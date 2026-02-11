@@ -1,8 +1,8 @@
 {
-  "name": "agentctl",
+  "name": "agentforce",
   "version": "1.0.0",
   "private": true,
-  "description": "Real-time web dashboard for AgentChat monitoring",
+  "description": "Enterprise dashboard for AgentChat - chat, channels, agents, file transfer, network graph",
   "scripts": {
     "start": "cd server && npm start",
     "dev": "concurrently \"cd server && npm run dev\" \"cd web && npm run dev\"",
