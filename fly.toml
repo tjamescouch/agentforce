@@ -1,10 +1,12 @@
+# fly.toml app configuration file generated for agentforce on 2026-02-11T12:10:25-07:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
 app = 'agentforce'
 primary_region = 'sjc'
 
 [build]
-
-[env]
-  # AGENTCHAT_PUBLIC no longer needed — container auto-detected
 
 [http_service]
   internal_port = 3000
@@ -16,12 +18,14 @@ primary_region = 'sjc'
 
 [checks]
   [checks.health]
-    type = 'http'
     port = 3000
-    path = '/api/health'
+    type = 'http'
     interval = '10s'
     timeout = '5s'
+    path = '/api/health'
 
 [[vm]]
   size = 'shared-cpu-1x'
   memory = '256mb'
+  cpus = 1
+  memory_mb = 256
