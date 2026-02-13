@@ -1,6 +1,7 @@
 import { useState, FormEvent } from 'react';
 import type { DashboardState, DashboardAction, WsSendFn } from '../types';
 import { agentColor, formatMsgRate } from '../utils';
+import { VisagePanel } from './VisagePanel';
 
 interface RightPanelProps {
   state: DashboardState;
@@ -94,6 +95,10 @@ export function RightPanel({ state, dispatch, send, panelWidth }: RightPanelProp
             ))}
           </div>
         )}
+        <VisagePanel
+          agent={agent}
+          messages={state.messages[state.selectedChannel] || []}
+        />
       </div>
     </div>
   );
