@@ -1318,8 +1318,8 @@ function handleDashboardMessage(client: DashboardClient, msg: DashboardMessage):
       }
       {
         const content = (msg.data.content as string || '').trim();
-        if (!content || content.length > 4000) {
-          client.ws.send(JSON.stringify({ type: 'error', data: { code: 'INVALID_MESSAGE', message: 'Message empty or too long (max 4000)' } }));
+        if (!content || content.length > 16000) {
+          client.ws.send(JSON.stringify({ type: 'error', data: { code: 'INVALID_MESSAGE', message: 'Message empty or too long (max 16000)' } }));
           return;
         }
         const sig = client.identity ? signMessageWithIdentity(content, client.identity) : null;

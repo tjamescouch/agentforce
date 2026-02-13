@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, FormEvent } from 'react';
+import { useState, useEffect, useRef, useCallback, FormEvent } from 'react';
 import type { DashboardState, DashboardAction, WsSendFn } from '../types';
 import { agentColor, formatTime, formatSize, renderMarkdown } from '../utils';
 import { FileOfferBanner } from './FileOfferBanner';
@@ -15,6 +15,8 @@ export function MessageFeed({ state, dispatch, send }: MessageFeedProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const [inputHeight, setInputHeight] = useState(72);
+  const isResizingInput = useRef(false);
   const allMessages = state.messages[state.selectedChannel] || [];
   const messages = allMessages.filter(m => m.from !== '@server');
 
@@ -62,7 +64,33 @@ export function MessageFeed({ state, dispatch, send }: MessageFeedProps) {
     setIsAtBottom(true);
   };
 
-  const handleSend = (e: FormEvent) => {
+  const onInputResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizingInput.current = true;
+    const startY = e.clientY;
+    const startHeight = inputHeight;
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!isResizingInput.current) return;
+      const delta = startY - ev.clientY;
+      setInputHeight(Math.min(400, Math.max(38, startHeight + delta)));
+    };
+
+    const onMouseUp = () => {
+      isResizingInput.current = false;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }, [inputHeight]);
+
+  const handleSend = (e: FormEvent | React.KeyboardEvent) => {
     e.preventDefault();
     if (!input.trim() || state.mode === 'lurk') return;
     if (input.trim().startsWith('/nick ')) {
@@ -147,13 +175,22 @@ export function MessageFeed({ state, dispatch, send }: MessageFeedProps) {
               : `${typingInChannel[0]} and ${typingInChannel.length - 1} others are typing...`}
         </div>
       )}
+      <div className="input-resize-handle" onMouseDown={onInputResizeMouseDown}>
+        <div className="input-resize-grip" />
+      </div>
       <form className="input-bar" onSubmit={handleSend}>
-        <input
-          type="text"
+        <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={state.mode === 'lurk' ? 'Lurk mode - read only' : 'Type a message...'}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleSend(e);
+            }
+          }}
+          placeholder={state.mode === 'lurk' ? 'Lurk mode - read only' : 'Type a message... (Shift+Enter for newline)'}
           disabled={state.mode === 'lurk'}
+          style={{ height: inputHeight }}
         />
         <button type="submit" disabled={state.mode === 'lurk'}>Send</button>
       </form>
