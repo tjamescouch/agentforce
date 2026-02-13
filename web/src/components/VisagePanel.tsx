@@ -9,16 +9,18 @@ interface VisagePanelProps {
   messages: Message[];
 }
 
-// --- Minimal face renderer (ported from visage/web/public/renderer.js) ---
+// --- Face renderer (ported from visage/web/public/renderer.js, polished) ---
 
 const STYLE = {
   headColor: '#2a2a3a',
+  headHighlight: '#353548',
   headOutline: '#444466',
   headOutlineWidth: 0.003,
   headRadiusX: 0.28,
   headRadiusY: 0.38,
   eyeWhiteColor: '#e8e8ee',
   irisColor: '#4488bb',
+  irisRingColor: '#336699',
   pupilColor: '#111122',
   highlightColor: '#ffffff',
   eyeOutline: '#333355',
@@ -29,16 +31,18 @@ const STYLE = {
   irisRadius: 0.025,
   pupilRadius: 0.013,
   highlightRadius: 0.005,
-  browColor: '#333355',
-  browWidth: 0.002,
+  browColor: '#444466',
+  browWidth: 0.003,
   browLength: 0.08,
   browY: -0.14,
   mouthColor: '#cc4455',
-  mouthInnerColor: '#661122',
+  mouthInnerColor: '#441122',
+  mouthTeethColor: '#dddddd',
   mouthOutline: '#993344',
   mouthY: 0.16,
   mouthBaseWidth: 0.08,
   noseColor: '#3a3a4a',
+  noseShadow: '#252535',
   noseY: 0.04,
   bgColor: '#111111',
 };
@@ -48,9 +52,10 @@ function renderFace(ctx: CanvasRenderingContext2D, w: number, h: number, frame: 
   const cy = h / 2;
   const s = Math.min(w, h);
   const pts = frame.pts;
+  const scale = pts.face_scale || 1.0;
 
-  const fy = (frac: number) => cy + frac * s;
-  const fs = (frac: number) => frac * s;
+  const fy = (frac: number) => cy + frac * s * scale;
+  const fs = (frac: number) => frac * s * scale;
 
   // Clear
   ctx.fillStyle = STYLE.bgColor;
@@ -60,27 +65,59 @@ function renderFace(ctx: CanvasRenderingContext2D, w: number, h: number, frame: 
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate(pts.head_roll || 0);
-  ctx.translate(-(pts.head_yaw || 0) * s * 0.1, (pts.head_pitch || 0) * s * 0.1);
+  ctx.translate(-(pts.head_yaw || 0) * s * 0.15, (pts.head_pitch || 0) * s * 0.15);
   ctx.translate(-cx, -cy);
 
-  // Head
+  // Head — with subtle gradient for dimension
+  const headRx = fs(STYLE.headRadiusX);
+  const headRy = fs(STYLE.headRadiusY);
+  const headGrad = ctx.createRadialGradient(
+    cx - headRx * 0.3, cy - headRy * 0.3, headRx * 0.1,
+    cx, cy, headRy
+  );
+  headGrad.addColorStop(0, STYLE.headHighlight);
+  headGrad.addColorStop(1, STYLE.headColor);
+
   ctx.beginPath();
-  ctx.ellipse(cx, cy, fs(STYLE.headRadiusX), fs(STYLE.headRadiusY), 0, 0, Math.PI * 2);
-  ctx.fillStyle = STYLE.headColor;
+  ctx.ellipse(cx, cy, headRx, headRy, 0, 0, Math.PI * 2);
+  ctx.fillStyle = headGrad;
   ctx.fill();
   ctx.strokeStyle = STYLE.headOutline;
   ctx.lineWidth = fs(STYLE.headOutlineWidth);
   ctx.stroke();
 
-  // Nose
+  // Nose — proper bridge and tip shape
   const noseX = cx;
-  const noseY = fy(STYLE.noseY);
+  const noseTop = fy(STYLE.noseY - 0.02);
+  const noseTip = fy(STYLE.noseY + 0.025);
+  const noseW = fs(0.018);
+
+  // Bridge line (subtle)
   ctx.beginPath();
-  ctx.moveTo(noseX, noseY - fs(0.015));
-  ctx.quadraticCurveTo(noseX + fs(0.01), noseY + fs(0.01), noseX, noseY + fs(0.015));
+  ctx.moveTo(noseX, noseTop);
+  ctx.lineTo(noseX, fy(STYLE.noseY + 0.01));
+  ctx.strokeStyle = STYLE.noseColor;
+  ctx.lineWidth = fs(0.0015);
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Nostrils / tip
+  ctx.beginPath();
+  ctx.moveTo(noseX - noseW, noseTip);
+  ctx.quadraticCurveTo(noseX - noseW * 0.5, noseTip + fs(0.008), noseX, noseTip + fs(0.003));
+  ctx.quadraticCurveTo(noseX + noseW * 0.5, noseTip + fs(0.008), noseX + noseW, noseTip);
   ctx.strokeStyle = STYLE.noseColor;
   ctx.lineWidth = fs(0.002);
+  ctx.lineCap = 'round';
   ctx.stroke();
+
+  // Nose shadow
+  ctx.beginPath();
+  ctx.ellipse(noseX, noseTip + fs(0.002), noseW * 0.6, fs(0.003), 0, 0, Math.PI * 2);
+  ctx.fillStyle = STYLE.noseShadow;
+  ctx.globalAlpha = 0.3;
+  ctx.fill();
+  ctx.globalAlpha = 1.0;
 
   // Eyes
   const drawEye = (side: 'left' | 'right') => {
@@ -88,48 +125,95 @@ function renderFace(ctx: CanvasRenderingContext2D, w: number, h: number, frame: 
     const ex = cx + sign * fs(STYLE.eyeSpacingX);
     const ey = fy(STYLE.eyeY);
     const openAmount = pts[`${side}_eye_open` as keyof MocapPts] as number ?? 0.85;
-    const pupilDx = ((pts[`${side}_pupil_x` as keyof MocapPts] as number) || 0) * fs(0.015);
-    const pupilDy = ((pts[`${side}_pupil_y` as keyof MocapPts] as number) || 0) * fs(0.015);
+    const pupilDx = ((pts[`${side}_pupil_x` as keyof MocapPts] as number) || 0) * fs(0.02);
+    const pupilDy = ((pts[`${side}_pupil_y` as keyof MocapPts] as number) || 0) * fs(0.02);
 
     ctx.save();
     const eyeH = fs(STYLE.eyeRadiusY) * Math.max(0.05, openAmount);
+    const eyeRx = fs(STYLE.eyeRadiusX);
+
+    // Clip to eye opening (almond shape)
     ctx.beginPath();
-    ctx.ellipse(ex, ey, fs(STYLE.eyeRadiusX), eyeH, 0, 0, Math.PI * 2);
+    ctx.ellipse(ex, ey, eyeRx, eyeH, 0, 0, Math.PI * 2);
     ctx.clip();
 
+    // Eye white with subtle gradient
+    const eyeGrad = ctx.createRadialGradient(ex, ey, 0, ex, ey, eyeRx);
+    eyeGrad.addColorStop(0, STYLE.eyeWhiteColor);
+    eyeGrad.addColorStop(1, '#ccccdd');
     ctx.beginPath();
-    ctx.ellipse(ex, ey, fs(STYLE.eyeRadiusX), fs(STYLE.eyeRadiusY), 0, 0, Math.PI * 2);
-    ctx.fillStyle = STYLE.eyeWhiteColor;
+    ctx.ellipse(ex, ey, eyeRx, fs(STYLE.eyeRadiusY), 0, 0, Math.PI * 2);
+    ctx.fillStyle = eyeGrad;
     ctx.fill();
 
+    // Iris — outer ring
+    const irisR = fs(STYLE.irisRadius);
     ctx.beginPath();
-    ctx.arc(ex + pupilDx, ey + pupilDy, fs(STYLE.irisRadius), 0, Math.PI * 2);
-    ctx.fillStyle = STYLE.irisColor;
+    ctx.arc(ex + pupilDx, ey + pupilDy, irisR, 0, Math.PI * 2);
+    ctx.fillStyle = STYLE.irisRingColor;
     ctx.fill();
 
+    // Iris — inner gradient
+    const irisGrad = ctx.createRadialGradient(
+      ex + pupilDx, ey + pupilDy, irisR * 0.2,
+      ex + pupilDx, ey + pupilDy, irisR
+    );
+    irisGrad.addColorStop(0, STYLE.irisColor);
+    irisGrad.addColorStop(1, STYLE.irisRingColor);
+    ctx.beginPath();
+    ctx.arc(ex + pupilDx, ey + pupilDy, irisR * 0.9, 0, Math.PI * 2);
+    ctx.fillStyle = irisGrad;
+    ctx.fill();
+
+    // Pupil
     ctx.beginPath();
     ctx.arc(ex + pupilDx, ey + pupilDy, fs(STYLE.pupilRadius), 0, Math.PI * 2);
     ctx.fillStyle = STYLE.pupilColor;
     ctx.fill();
 
+    // Highlight — primary
     ctx.beginPath();
     ctx.arc(ex + pupilDx + fs(0.008), ey + pupilDy - fs(0.008), fs(STYLE.highlightRadius), 0, Math.PI * 2);
     ctx.fillStyle = STYLE.highlightColor;
     ctx.fill();
 
+    // Highlight — secondary (smaller, opposite side)
+    ctx.beginPath();
+    ctx.arc(ex + pupilDx - fs(0.004), ey + pupilDy + fs(0.005), fs(STYLE.highlightRadius * 0.5), 0, Math.PI * 2);
+    ctx.fillStyle = STYLE.highlightColor;
+    ctx.globalAlpha = 0.4;
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
+
+    // Upper eyelid shadow
+    ctx.beginPath();
+    ctx.ellipse(ex, ey - eyeH * 0.3, eyeRx, eyeH * 0.5, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(20, 20, 40, 0.15)';
+    ctx.fill();
+
     ctx.restore();
 
+    // Eye outline
     ctx.beginPath();
-    ctx.ellipse(ex, ey, fs(STYLE.eyeRadiusX), eyeH, 0, 0, Math.PI * 2);
+    ctx.ellipse(ex, ey, eyeRx, eyeH, 0, 0, Math.PI * 2);
     ctx.strokeStyle = STYLE.eyeOutline;
     ctx.lineWidth = fs(0.002);
     ctx.stroke();
+
+    // Eyelash hint (top of eye, slightly thicker)
+    if (openAmount > 0.2) {
+      ctx.beginPath();
+      ctx.ellipse(ex, ey, eyeRx, eyeH, 0, Math.PI + 0.3, Math.PI * 2 - 0.3);
+      ctx.strokeStyle = STYLE.eyeOutline;
+      ctx.lineWidth = fs(0.003);
+      ctx.stroke();
+    }
   };
 
   drawEye('left');
   drawEye('right');
 
-  // Eyebrows
+  // Eyebrows — variable thickness with taper
   const drawBrow = (side: 'left' | 'right') => {
     const sign = side === 'left' ? -1 : 1;
     const bx = cx + sign * fs(STYLE.eyeSpacingX);
@@ -140,13 +224,18 @@ function renderFace(ctx: CanvasRenderingContext2D, w: number, h: number, frame: 
     ctx.translate(bx, by);
     ctx.rotate(angle);
 
+    const halfLen = fs(STYLE.browLength / 2);
+
+    // Draw brow as a filled shape for variable thickness
     ctx.beginPath();
-    ctx.moveTo(-fs(STYLE.browLength / 2), 0);
-    ctx.quadraticCurveTo(0, -fs(0.008), fs(STYLE.browLength / 2), fs(0.003));
-    ctx.strokeStyle = STYLE.browColor;
-    ctx.lineWidth = fs(STYLE.browWidth);
-    ctx.lineCap = 'round';
-    ctx.stroke();
+    ctx.moveTo(-halfLen, fs(0.001));
+    ctx.quadraticCurveTo(-halfLen * 0.3, -fs(0.006), 0, -fs(0.005));
+    ctx.quadraticCurveTo(halfLen * 0.5, -fs(0.004), halfLen, fs(0.001));
+    ctx.quadraticCurveTo(halfLen * 0.5, fs(0.003), 0, fs(0.002));
+    ctx.quadraticCurveTo(-halfLen * 0.3, fs(0.003), -halfLen, fs(0.001));
+    ctx.closePath();
+    ctx.fillStyle = STYLE.browColor;
+    ctx.fill();
 
     ctx.restore();
   };
@@ -164,34 +253,79 @@ function renderFace(ctx: CanvasRenderingContext2D, w: number, h: number, frame: 
   const my = fy(STYLE.mouthY) + jawOpen * fs(0.03);
   const mw = fs(STYLE.mouthBaseWidth) + mouthWide * fs(0.04);
   const mh = mouthOpen * fs(0.04) + jawOpen * fs(0.02);
-  const smileCurve = mouthSmile * fs(0.02);
+  const smileCurve = mouthSmile * fs(0.025);
 
   if (mouthOpen > 0.02 || jawOpen > 0.02) {
+    // Open mouth — dark interior
     ctx.beginPath();
     ctx.moveTo(mx - mw, my);
-    ctx.quadraticCurveTo(mx, my - fs(0.01) - smileCurve, mx + mw, my);
-    ctx.quadraticCurveTo(mx, my + mh + smileCurve, mx - mw, my);
+    ctx.bezierCurveTo(mx - mw * 0.5, my - fs(0.01) - smileCurve, mx + mw * 0.5, my - fs(0.01) - smileCurve, mx + mw, my);
+    ctx.bezierCurveTo(mx + mw * 0.5, my + mh + smileCurve * 0.5, mx - mw * 0.5, my + mh + smileCurve * 0.5, mx - mw, my);
     ctx.closePath();
     ctx.fillStyle = STYLE.mouthInnerColor;
     ctx.fill();
-    ctx.strokeStyle = STYLE.mouthOutline;
-    ctx.lineWidth = fs(0.002);
-    ctx.stroke();
 
+    // Teeth hint (when mouth is moderately open)
+    if (mouthOpen > 0.1 || jawOpen > 0.1) {
+      const teethH = Math.min(mh * 0.35, fs(0.012));
+      ctx.beginPath();
+      ctx.moveTo(mx - mw * 0.7, my + fs(0.002));
+      ctx.bezierCurveTo(mx - mw * 0.3, my - fs(0.003), mx + mw * 0.3, my - fs(0.003), mx + mw * 0.7, my + fs(0.002));
+      ctx.lineTo(mx + mw * 0.7, my + teethH);
+      ctx.lineTo(mx - mw * 0.7, my + teethH);
+      ctx.closePath();
+      ctx.fillStyle = STYLE.mouthTeethColor;
+      ctx.globalAlpha = 0.6;
+      ctx.fill();
+      ctx.globalAlpha = 1.0;
+    }
+
+    // Upper lip
     ctx.beginPath();
     ctx.moveTo(mx - mw, my);
-    ctx.quadraticCurveTo(mx, my - fs(0.01) - smileCurve, mx + mw, my);
-    ctx.quadraticCurveTo(mx, my + fs(0.005), mx - mw, my);
+    ctx.bezierCurveTo(mx - mw * 0.5, my - fs(0.012) - smileCurve, mx + mw * 0.5, my - fs(0.012) - smileCurve, mx + mw, my);
+    ctx.bezierCurveTo(mx + mw * 0.3, my + fs(0.005), mx - mw * 0.3, my + fs(0.005), mx - mw, my);
+    ctx.closePath();
     ctx.fillStyle = STYLE.mouthColor;
     ctx.fill();
+
+    // Outline
+    ctx.beginPath();
+    ctx.moveTo(mx - mw, my);
+    ctx.bezierCurveTo(mx - mw * 0.5, my - fs(0.012) - smileCurve, mx + mw * 0.5, my - fs(0.012) - smileCurve, mx + mw, my);
+    ctx.bezierCurveTo(mx + mw * 0.5, my + mh + smileCurve * 0.5, mx - mw * 0.5, my + mh + smileCurve * 0.5, mx - mw, my);
+    ctx.strokeStyle = STYLE.mouthOutline;
+    ctx.lineWidth = fs(0.0015);
+    ctx.stroke();
   } else {
+    // Closed mouth — curved line with lip shape
+    // Upper lip cupid's bow
     ctx.beginPath();
     ctx.moveTo(mx - mw, my + smileCurve);
-    ctx.quadraticCurveTo(mx, my - smileCurve * 2, mx + mw, my + smileCurve);
+    ctx.bezierCurveTo(
+      mx - mw * 0.3, my - smileCurve * 1.5,
+      mx - fs(0.005), my - smileCurve * 1.5 - fs(0.003),
+      mx, my - smileCurve * 1.2
+    );
+    ctx.bezierCurveTo(
+      mx + fs(0.005), my - smileCurve * 1.5 - fs(0.003),
+      mx + mw * 0.3, my - smileCurve * 1.5,
+      mx + mw, my + smileCurve
+    );
     ctx.strokeStyle = STYLE.mouthColor;
     ctx.lineWidth = fs(0.003);
     ctx.lineCap = 'round';
     ctx.stroke();
+
+    // Lower lip hint
+    ctx.beginPath();
+    ctx.moveTo(mx - mw * 0.6, my + smileCurve + fs(0.003));
+    ctx.quadraticCurveTo(mx, my + smileCurve + fs(0.012), mx + mw * 0.6, my + smileCurve + fs(0.003));
+    ctx.strokeStyle = STYLE.mouthColor;
+    ctx.lineWidth = fs(0.0015);
+    ctx.globalAlpha = 0.4;
+    ctx.stroke();
+    ctx.globalAlpha = 1.0;
   }
 
   ctx.restore();
@@ -236,7 +370,8 @@ export function VisagePanel({ agent, messages }: VisagePanelProps) {
       if (c.width !== w * dpr || c.height !== h * dpr) {
         c.width = w * dpr;
         c.height = h * dpr;
-        ctx!.scale(dpr, dpr);
+        // Reset transform before scaling to prevent compound scaling on resize
+        ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
       }
 
       const now = Date.now();
