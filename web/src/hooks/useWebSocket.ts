@@ -19,19 +19,17 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>): WsSendF
       ws.current.onopen = () => {
         console.log('WebSocket connected');
         reconnectDelay = 2000;
-        const savedMode = localStorage.getItem('dashboardMode');
-        if (savedMode && savedMode !== 'lurk') {
-          const storedNick = localStorage.getItem('dashboardNick');
-          const storedIdentity = localStorage.getItem('dashboardIdentity');
-          ws.current!.send(JSON.stringify({
-            type: 'set_mode',
-            data: {
-              mode: savedMode,
-              nick: storedNick || undefined,
-              identity: storedIdentity ? JSON.parse(storedIdentity) : undefined
-            }
-          }));
-        }
+        const savedMode = localStorage.getItem('dashboardMode') || 'participate';
+        const storedNick = localStorage.getItem('dashboardNick');
+        const storedIdentity = localStorage.getItem('dashboardIdentity');
+        ws.current!.send(JSON.stringify({
+          type: 'set_mode',
+          data: {
+            mode: savedMode,
+            nick: storedNick || undefined,
+            identity: storedIdentity ? JSON.parse(storedIdentity) : undefined
+          }
+        }));
       };
 
       ws.current.onmessage = (e: MessageEvent) => {

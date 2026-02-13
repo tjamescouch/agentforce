@@ -2,7 +2,7 @@ import type { DashboardState, DashboardAction, Message } from './types';
 
 // ============ Persistence ============
 
-export const savedMode = typeof window !== 'undefined' ? localStorage.getItem('dashboardMode') || 'lurk' : 'lurk';
+export const savedMode = typeof window !== 'undefined' ? localStorage.getItem('dashboardMode') || 'participate' : 'participate';
 export const savedNick = typeof window !== 'undefined' ? localStorage.getItem('dashboardNick') : null;
 
 const loadPersistedMessages = (): Record<string, Message[]> => {
