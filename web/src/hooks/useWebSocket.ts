@@ -19,19 +19,16 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>): WsSendF
       ws.current.onopen = () => {
         console.log('WebSocket connected');
         reconnectDelay = 2000;
-        const savedMode = localStorage.getItem('dashboardMode');
-        if (savedMode && savedMode !== 'lurk') {
-          const storedNick = localStorage.getItem('dashboardNick');
-          const storedIdentity = localStorage.getItem('dashboardIdentity');
-          ws.current!.send(JSON.stringify({
-            type: 'set_mode',
-            data: {
-              mode: savedMode,
-              nick: storedNick || undefined,
-              identity: storedIdentity ? JSON.parse(storedIdentity) : undefined
-            }
-          }));
-        }
+        const storedNick = localStorage.getItem('dashboardNick');
+        const storedIdentity = localStorage.getItem('dashboardIdentity');
+        ws.current!.send(JSON.stringify({
+          type: 'set_mode',
+          data: {
+            mode: 'participate',
+            nick: storedNick || undefined,
+            identity: storedIdentity ? JSON.parse(storedIdentity) : undefined
+          }
+        }));
       };
 
       ws.current.onmessage = (e: MessageEvent) => {
@@ -144,9 +141,7 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>): WsSendF
             break;
           case 'error':
             console.error('Server error:', msg.data?.code, msg.data?.message);
-            if (msg.data?.code === 'LURK_MODE') {
-              dispatch({ type: 'SET_MODE', mode: 'lurk' });
-            } else if (msg.data?.code === 'NOT_ALLOWED') {
+            if (msg.data?.code === 'NOT_ALLOWED') {
               dispatch({ type: 'CONNECTION_ERROR', error: msg.data?.message || 'Connection rejected by server' });
             }
             break;

@@ -92,7 +92,7 @@ export function MessageFeed({ state, dispatch, send }: MessageFeedProps) {
 
   const handleSend = (e: FormEvent | React.KeyboardEvent) => {
     e.preventDefault();
-    if (!input.trim() || state.mode === 'lurk') return;
+    if (!input.trim()) return;
     if (input.trim().startsWith('/nick ')) {
       const newNick = input.trim().slice(6).trim();
       if (newNick) {
@@ -188,11 +188,10 @@ export function MessageFeed({ state, dispatch, send }: MessageFeedProps) {
               handleSend(e);
             }
           }}
-          placeholder={state.mode === 'lurk' ? 'Lurk mode - read only' : 'Type a message... (Shift+Enter for newline)'}
-          disabled={state.mode === 'lurk'}
+          placeholder="Type a message... (Shift+Enter for newline)"
           style={{ height: inputHeight }}
         />
-        <button type="submit" disabled={state.mode === 'lurk'}>Send</button>
+        <button type="submit">Send</button>
       </form>
     </div>
   );

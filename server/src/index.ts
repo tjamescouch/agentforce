@@ -1687,7 +1687,7 @@ wss.on('connection', (ws, req) => {
     ws,
     ip,
     id: `client-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    mode: 'lurk',
+    mode: 'participate',
     subscriptions: new Set(),
     lastPing: Date.now(),
     messageTimestamps: [],
