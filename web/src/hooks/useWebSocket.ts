@@ -142,9 +142,7 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>): WsSendF
             break;
           case 'error':
             console.error('Server error:', msg.data?.code, msg.data?.message);
-            if (msg.data?.code === 'LURK_MODE') {
-              dispatch({ type: 'SET_MODE', mode: 'lurk' });
-            } else if (msg.data?.code === 'NOT_ALLOWED') {
+            if (msg.data?.code === 'NOT_ALLOWED') {
               dispatch({ type: 'CONNECTION_ERROR', error: msg.data?.message || 'Connection rejected by server' });
             }
             break;
