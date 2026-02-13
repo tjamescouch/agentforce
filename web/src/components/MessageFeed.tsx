@@ -148,12 +148,18 @@ export function MessageFeed({ state, dispatch, send }: MessageFeedProps) {
         </div>
       )}
       <form className="input-bar" onSubmit={handleSend}>
-        <input
-          type="text"
+        <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={state.mode === 'lurk' ? 'Lurk mode - read only' : 'Type a message...'}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleSend(e);
+            }
+          }}
+          placeholder={state.mode === 'lurk' ? 'Lurk mode - read only' : 'Type a message... (Shift+Enter for newline)'}
           disabled={state.mode === 'lurk'}
+          rows={2}
         />
         <button type="submit" disabled={state.mode === 'lurk'}>Send</button>
       </form>

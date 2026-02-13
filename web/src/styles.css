@@ -602,9 +602,10 @@ body {
   gap: 8px;
   border-top: 1px solid var(--border);
   background: var(--bg-primary);
+  align-items: flex-end;
 }
 
-.input-bar input {
+.input-bar textarea {
   flex: 1;
   padding: 9px 14px;
   background: var(--bg-primary);
@@ -615,19 +616,23 @@ body {
   border-radius: var(--radius-md);
   outline: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  resize: vertical;
+  min-height: 40px;
+  max-height: 300px;
+  line-height: 1.4;
 }
 
-.input-bar input:focus {
+.input-bar textarea:focus {
   border-color: var(--accent-blue);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-.input-bar input:disabled {
+.input-bar textarea:disabled {
   opacity: 0.5;
   background: var(--bg-tertiary);
 }
 
-.input-bar input::placeholder {
+.input-bar textarea::placeholder {
   color: var(--text-muted);
 }
 
@@ -1593,7 +1598,7 @@ body {
   .topbar-left { gap: 8px; }
   .topbar-right { gap: 6px; }
   .input-bar { padding: 8px; gap: 4px; }
-  .input-bar input { padding: 8px 10px; font-size: 16px; }
+  .input-bar textarea { padding: 8px 10px; font-size: 16px; }
   .input-bar button { padding: 8px 14px; }
   .dashboard-nick { display: none; }
 }
@@ -1601,7 +1606,7 @@ body {
 @media (max-width: 480px) {
   .topbar { padding: 6px 8px; }
   .logo { font-size: 14px; }
-  .input-bar input { font-size: 16px; }
+  .input-bar textarea { font-size: 16px; }
 }
 
 /* ============ File Bubble ============ */
