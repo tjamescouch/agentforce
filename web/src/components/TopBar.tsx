@@ -34,18 +34,6 @@ export function TopBar({ state, dispatch, send, theme, setTheme }: TopBarProps) 
 
   const themeLabel = theme === 'system' ? 'System' : theme === 'light' ? 'Light' : 'Dark';
 
-  const toggleMode = () => {
-    const newMode = state.mode === 'lurk' ? 'participate' : 'lurk';
-    const storedIdentity = typeof window !== 'undefined' ? localStorage.getItem('dashboardIdentity') : null;
-    send({
-      type: 'set_mode',
-      data: {
-        mode: newMode,
-        ...(newMode === 'participate' && storedIdentity ? { identity: JSON.parse(storedIdentity) } : {})
-      }
-    });
-  };
-
   return (
     <div className="topbar">
       <div className="topbar-left">
@@ -97,12 +85,6 @@ export function TopBar({ state, dispatch, send, theme, setTheme }: TopBarProps) 
               <button className="settings-item" onClick={cycleTheme}>
                 <span className="settings-item-label">Theme</span>
                 <span className="settings-item-value">{themeLabel}</span>
-              </button>
-              <button className="settings-item" onClick={toggleMode}>
-                <span className="settings-item-label">Mode</span>
-                <span className={`settings-item-badge ${state.mode === 'participate' ? 'on' : ''}`}>
-                  {state.mode === 'lurk' ? 'Lurk' : 'Active'}
-                </span>
               </button>
             </div>
           )}

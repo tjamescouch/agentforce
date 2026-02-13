@@ -596,15 +596,44 @@ body {
   50% { opacity: 1; }
 }
 
-.input-bar {
+.input-resize-handle {
+  height: 6px;
+  cursor: row-resize;
   display: flex;
-  padding: 12px 16px;
-  gap: 8px;
-  border-top: 1px solid var(--border);
+  align-items: center;
+  justify-content: center;
   background: var(--bg-primary);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
-.input-bar input {
+.input-resize-handle:hover,
+.input-resize-handle:active {
+  background: var(--bg-tertiary);
+}
+
+.input-resize-grip {
+  width: 36px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--text-muted);
+  opacity: 0.4;
+  transition: opacity 0.15s ease;
+}
+
+.input-resize-handle:hover .input-resize-grip {
+  opacity: 0.8;
+}
+
+.input-bar {
+  display: flex;
+  padding: 8px 16px 12px;
+  gap: 8px;
+  background: var(--bg-primary);
+  align-items: flex-end;
+}
+
+.input-bar textarea {
   flex: 1;
   padding: 9px 14px;
   background: var(--bg-primary);
@@ -615,19 +644,22 @@ body {
   border-radius: var(--radius-md);
   outline: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  resize: none;
+  line-height: 1.4;
+  overflow-y: auto;
 }
 
-.input-bar input:focus {
+.input-bar textarea:focus {
   border-color: var(--accent-blue);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-.input-bar input:disabled {
+.input-bar textarea:disabled {
   opacity: 0.5;
   background: var(--bg-tertiary);
 }
 
-.input-bar input::placeholder {
+.input-bar textarea::placeholder {
   color: var(--text-muted);
 }
 
@@ -1593,7 +1625,7 @@ body {
   .topbar-left { gap: 8px; }
   .topbar-right { gap: 6px; }
   .input-bar { padding: 8px; gap: 4px; }
-  .input-bar input { padding: 8px 10px; font-size: 16px; }
+  .input-bar textarea { padding: 8px 10px; font-size: 16px; }
   .input-bar button { padding: 8px 14px; }
   .dashboard-nick { display: none; }
 }
@@ -1601,7 +1633,7 @@ body {
 @media (max-width: 480px) {
   .topbar { padding: 6px 8px; }
   .logo { font-size: 14px; }
-  .input-bar input { font-size: 16px; }
+  .input-bar textarea { font-size: 16px; }
 }
 
 /* ============ File Bubble ============ */

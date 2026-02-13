@@ -37,11 +37,6 @@ export function DropZone({ state, dispatch, children }: DropZoneProps) {
     setDragging(false);
     dragCounter.current = 0;
 
-    if (state.mode === 'lurk') {
-      alert('Switch to participate mode to send files');
-      return;
-    }
-
     const readEntry = (entry: FileSystemEntry, path: string): Promise<File[]> => {
       if (entry.isFile) {
         return new Promise((resolve) => {
