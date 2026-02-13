@@ -286,4 +286,80 @@ function easeOut(t: number): number {
   return 1 - inv * inv * inv;
 }
 
+// --- IdleAnimator (breathing, blinking, eye drift) ---
+
+/** Seeded pseudo-random number generator (simple LCG). */
+class SeededRng {
+  private state: number;
+  constructor(seed: number) { this.state = seed; }
+  next(): number {
+    this.state = (this.state * 1664525 + 1013904223) & 0xffffffff;
+    return (this.state >>> 0) / 0xffffffff;
+  }
+}
+
+/**
+ * Adds organic idle motion to any MocapPts: breathing, blinking,
+ * subtle eye drift, and micro head movements. Always running.
+ * Ported from visage/old/interp.py IdleAnimator.
+ */
+export class IdleAnimator {
+  private rng: SeededRng;
+  private time = 0;
+  private nextBlink: number;
+  private blinking = false;
+  private blinkT = 0;
+  private blinkDuration = 0.15;
+
+  constructor(seed = 42) {
+    this.rng = new SeededRng(seed);
+    this.nextBlink = 2.0 + this.rng.next() * 3.0;
+  }
+
+  /** Apply idle motion to a MocapPts in-place and return it. dt in seconds. */
+  apply(pts: MocapPts, dt: number): MocapPts {
+    this.time += dt;
+
+    // --- Breathing: subtle face_scale oscillation ---
+    pts.face_scale += 0.008 * Math.sin(this.time * 1.5);
+
+    // --- Blinking ---
+    this.nextBlink -= dt;
+    if (this.nextBlink <= 0 && !this.blinking) {
+      this.blinking = true;
+      this.blinkT = 0;
+      this.nextBlink = 2.0 + this.rng.next() * 4.0;
+    }
+
+    if (this.blinking) {
+      this.blinkT += dt;
+      if (this.blinkT < this.blinkDuration) {
+        const blink = Math.sin((this.blinkT / this.blinkDuration) * Math.PI);
+        pts.left_eye_open *= (1.0 - blink * 0.95);
+        pts.right_eye_open *= (1.0 - blink * 0.95);
+      } else {
+        this.blinking = false;
+      }
+    }
+
+    // --- Eye drift: slow sinusoidal gaze wander ---
+    pts.left_pupil_x  += 0.008 * Math.sin(this.time * 0.7 + 1.3);
+    pts.left_pupil_y  += 0.005 * Math.sin(this.time * 0.5 + 2.7);
+    pts.right_pupil_x += 0.008 * Math.sin(this.time * 0.7 + 1.3);
+    pts.right_pupil_y += 0.005 * Math.sin(this.time * 0.5 + 2.7);
+
+    // --- Micro head movement: very subtle sway ---
+    pts.head_yaw  += 0.003 * Math.sin(this.time * 0.3 + 0.5);
+    pts.head_pitch += 0.002 * Math.sin(this.time * 0.4 + 1.8);
+
+    // Clamp everything to valid ranges
+    for (const key of ptsKeys) {
+      const [lo, hi] = RANGES[key];
+      pts[key] = clamp(pts[key], lo, hi);
+    }
+
+    return pts;
+  }
+}
+
 export { NEUTRAL, PRESETS, RANGES };

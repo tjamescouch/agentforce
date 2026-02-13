@@ -1,6 +1,6 @@
 import { useRef, useEffect } from 'react';
 import type { Agent, Message } from '../types';
-import { EmotionDriver } from '../emotion';
+import { EmotionDriver, IdleAnimator } from '../emotion';
 import { useEmotionStream } from '../hooks/useEmotionStream';
 import type { MocapFrame, MocapPts } from '../emotion';
 
@@ -202,6 +202,8 @@ function renderFace(ctx: CanvasRenderingContext2D, w: number, h: number, frame: 
 export function VisagePanel({ agent, messages }: VisagePanelProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const driverRef = useRef<EmotionDriver>(new EmotionDriver(200, 2000));
+  const idleRef = useRef<IdleAnimator>(new IdleAnimator(Math.random() * 10000 | 0));
+  const lastFrameRef = useRef<number>(Date.now());
   const rafRef = useRef<number>(0);
 
   // Parse latest emotion state from agent messages
@@ -237,7 +239,13 @@ export function VisagePanel({ agent, messages }: VisagePanelProps) {
         ctx!.scale(dpr, dpr);
       }
 
+      const now = Date.now();
+      const dt = Math.min((now - lastFrameRef.current) / 1000, 0.1); // seconds, capped
+      lastFrameRef.current = now;
+
       const frame = driverRef.current.frame();
+      // Apply idle animation (breathing, blinking, eye drift) on top
+      idleRef.current.apply(frame.pts, dt);
       renderFace(ctx!, w, h, frame);
 
       rafRef.current = requestAnimationFrame(tick);
