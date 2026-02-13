@@ -1332,7 +1332,7 @@ function handleDashboardMessage(client: DashboardClient, msg: DashboardMessage):
       const { mode: newMode, nick: preferredNick, identity: browserIdentity } = msg.data as {
         mode: string; nick?: string; identity?: { publicKey: string; secretKey: string }
       };
-      if (newMode === 'participate' && client.mode !== 'participate') {
+      if (newMode === 'participate' && (!client.agentChatWs || client.agentChatWs.readyState !== WebSocket.OPEN)) {
         connectClientToAgentChat(client, preferredNick || undefined, browserIdentity || undefined);
       } else if (newMode === 'lurk' && client.mode !== 'lurk') {
         disconnectClientFromAgentChat(client);
