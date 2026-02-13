@@ -22,9 +22,9 @@
 }
 
 :root {
-  --bg-primary: #ffffff;
-  --bg-secondary: #f9fafb;
-  --bg-tertiary: #f3f4f6;
+  --bg-primary: #f8f9fa;
+  --bg-secondary: #f1f3f5;
+  --bg-tertiary: #e9ecef;
   --text-primary: #111827;
   --text-secondary: #374151;
   --text-muted: #9ca3af;
@@ -42,9 +42,9 @@
   --radius-lg: 12px;
 }
 
-/* Dark mode */
+/* Dark mode — system preference */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg-primary: #0f1117;
     --bg-secondary: #161921;
     --bg-tertiary: #1e2028;
@@ -61,6 +61,44 @@
     --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
     --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
   }
+}
+
+/* Dark mode — explicit override */
+:root[data-theme="dark"] {
+  --bg-primary: #0f1117;
+  --bg-secondary: #161921;
+  --bg-tertiary: #1e2028;
+  --text-primary: #f0f1f3;
+  --text-secondary: #a1a5b0;
+  --text-muted: #5c5f6e;
+  --accent-blue: #5b9cf6;
+  --accent-yellow: #f5b731;
+  --accent-red: #f06060;
+  --accent-green: #34d399;
+  --border: #2a2d37;
+  --border-strong: #3a3d49;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+}
+
+/* Light mode — explicit override (muted off-white) */
+:root[data-theme="light"] {
+  --bg-primary: #f8f9fa;
+  --bg-secondary: #f1f3f5;
+  --bg-tertiary: #e9ecef;
+  --text-primary: #111827;
+  --text-secondary: #374151;
+  --text-muted: #9ca3af;
+  --accent-blue: #3b82f6;
+  --accent-yellow: #f59e0b;
+  --accent-red: #ef4444;
+  --accent-green: #10b981;
+  --border: #e5e7eb;
+  --border-strong: #d1d5db;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
 }
 
 body {
@@ -136,52 +174,97 @@ body {
   font-size: 12px;
 }
 
-.mode-btn {
-  padding: 5px 12px;
+/* Settings gear menu */
+.settings-menu {
+  position: relative;
+}
+
+.settings-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+}
+
+.settings-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border-color: var(--border);
+}
+
+.settings-btn.active {
+  background: var(--bg-tertiary);
+  color: var(--accent-blue);
+  border-color: var(--border);
+}
+
+.settings-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
   background: var(--bg-primary);
   border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  z-index: 100;
+}
+
+.settings-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
   color: var(--text-secondary);
   font-family: inherit;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 13px;
   cursor: pointer;
   border-radius: var(--radius-sm);
-  transition: all 0.15s ease;
+  transition: background 0.1s ease;
 }
 
-.mode-btn:hover {
-  border-color: var(--border-strong);
+.settings-item:hover {
   background: var(--bg-tertiary);
 }
 
-.mode-btn.participate {
-  background: rgba(59, 130, 246, 0.08);
-  border-color: var(--accent-blue);
-  color: var(--accent-blue);
+.settings-item-label {
+  font-weight: 500;
 }
 
-.logs-btn {
-  padding: 5px 12px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border);
+.settings-item-value {
   color: var(--text-muted);
-  font-family: inherit;
   font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  transition: all 0.15s ease;
 }
 
-.logs-btn:hover {
-  border-color: var(--border-strong);
+.settings-item-badge {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 100px;
   background: var(--bg-tertiary);
+  color: var(--text-muted);
+  font-weight: 500;
 }
 
-.logs-btn.active {
-  background: rgba(59, 130, 246, 0.06);
-  border-color: var(--accent-blue);
+.settings-item-badge.on {
+  background: rgba(59, 130, 246, 0.1);
   color: var(--accent-blue);
+}
+
+.settings-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 8px;
 }
 
 /* ============ Content Area ============ */
@@ -330,19 +413,6 @@ body {
   font-size: 14px;
 }
 
-.server-toggle {
-  font-size: 12px;
-  color: var(--text-muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.server-toggle input {
-  cursor: pointer;
-  accent-color: var(--accent-blue);
-}
 
 .messages {
   flex: 1;
@@ -1226,24 +1296,6 @@ body {
 
 /* ============ Network Pulse ============ */
 
-.pulse-btn {
-  padding: 5px 12px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  transition: all 0.15s ease;
-}
-
-.pulse-btn.active {
-  background: rgba(59, 130, 246, 0.06);
-  border-color: var(--accent-blue);
-  color: var(--accent-blue);
-}
 
 .network-pulse {
   flex: 1;
@@ -1543,7 +1595,6 @@ body {
   .input-bar { padding: 8px; gap: 4px; }
   .input-bar input { padding: 8px 10px; font-size: 16px; }
   .input-bar button { padding: 8px 14px; }
-  .mode-btn { padding: 4px 8px; font-size: 11px; }
   .dashboard-nick { display: none; }
 }
 

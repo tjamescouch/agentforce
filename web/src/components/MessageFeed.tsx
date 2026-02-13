@@ -12,14 +12,11 @@ interface MessageFeedProps {
 
 export function MessageFeed({ state, dispatch, send }: MessageFeedProps) {
   const [input, setInput] = useState('');
-  const [hideServer, setHideServer] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const allMessages = state.messages[state.selectedChannel] || [];
-  const messages = hideServer
-    ? allMessages.filter(m => m.from !== '@server')
-    : allMessages;
+  const messages = allMessages.filter(m => m.from !== '@server');
 
   const handleScroll = () => {
     const container = messagesContainerRef.current;
@@ -87,14 +84,6 @@ export function MessageFeed({ state, dispatch, send }: MessageFeedProps) {
     <div className="message-feed">
       <div className="feed-header">
         <span className="channel-title">{state.selectedChannel || 'Select a channel'}</span>
-        <label className="server-toggle">
-          <input
-            type="checkbox"
-            checked={hideServer}
-            onChange={(e) => setHideServer(e.target.checked)}
-          />
-          Hide @server
-        </label>
       </div>
       <FileOfferBanner state={state} dispatch={dispatch} send={send} />
       <TransferBar state={state} />
