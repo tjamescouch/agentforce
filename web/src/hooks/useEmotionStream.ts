@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { Message } from '../types';
 import type { StateVector } from '../emotion';
+import { analyzeSentiment } from '../sentiment';
 
 /**
  * Parse @@key:val,key:val@@ state vector markers from message content.
@@ -57,9 +58,17 @@ export function useEmotionStream(
       .slice(-lookback);
 
     // Walk backwards to find the most recent state vector
+    // Priority: explicit @@markers@@ > sentiment analysis fallback
     for (let i = agentMsgs.length - 1; i >= 0; i--) {
       const sv = parseStateVector(agentMsgs[i].content);
       if (sv) return sv;
+    }
+
+    // Fallback: run keyword sentiment on the most recent message
+    if (agentMsgs.length > 0) {
+      const latest = agentMsgs[agentMsgs.length - 1].content;
+      const inferred = analyzeSentiment(latest);
+      if (inferred) return inferred;
     }
 
     return null;
