@@ -283,26 +283,44 @@ body {
 }
 
 
-/* ============ Sidebar Toggle ============ */
+/* ============ Sidebar Edge Handle (collapsed) ============ */
 
-.sidebar-toggle {
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--fg-secondary);
-  cursor: pointer;
-  padding: 4px 6px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color 0.15s, background 0.15s, border-color 0.15s;
-  margin-right: 8px;
+.sidebar-handle.collapsed-edge {
+  width: 6px;
+  min-width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+  flex-shrink: 0;
+  z-index: 20;
+  transition: background 0.2s;
 }
 
-.sidebar-toggle:hover {
-  color: var(--fg-primary);
+.sidebar-handle.collapsed-edge::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 1px;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 32px;
+  border-radius: 2px;
+  background: var(--border);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.sidebar-handle.collapsed-edge:hover::after {
+  opacity: 0.7;
+}
+
+.sidebar-handle.collapsed-edge:hover {
   background: var(--bg-tertiary);
-  border-color: var(--fg-secondary);
+}
+
+.sidebar-handle.collapsed-edge.active::after {
+  opacity: 1;
+  background: var(--accent-blue);
 }
 
 /* ============ Sidebar ============ */

@@ -61,7 +61,6 @@ export interface DashboardState {
   connectionStatus: 'connecting' | 'syncing' | 'ready' | 'error' | 'disconnected';
   connectionError: string | null;
   mode: string;
-  sidebarOpen: boolean;
   agents: Record<string, Agent>;
   channels: Record<string, Channel>;
   messages: Record<string, Message[]>;
@@ -87,7 +86,6 @@ export type DashboardAction =
   | { type: 'DISCONNECTED' }
   | { type: 'MESSAGE'; data: Message }
   | { type: 'AGENT_UPDATE'; data: Agent }
-  | { type: 'TOGGLE_SIDEBAR' }
   | { type: 'SET_MODE'; mode: string }
   | { type: 'SELECT_CHANNEL'; channel: string }
   | { type: 'SELECT_AGENT'; agent: Agent }
@@ -104,7 +102,6 @@ export type DashboardAction =
   | { type: 'TOGGLE_LOGS' }
   | { type: 'CLEAR_LOGS' }
   | { type: 'TOGGLE_PULSE' }
-  | { type: 'TOGGLE_SIDEBAR' }
   | { type: 'CONNECTION_ERROR'; error: string }
   | { type: 'CONNECTING' }
   | { type: 'AGENTS_BULK_UPDATE'; data: Agent[] }
