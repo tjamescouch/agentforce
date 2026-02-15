@@ -282,6 +282,29 @@ body {
   overflow: hidden;
 }
 
+
+/* ============ Sidebar Toggle ============ */
+
+.sidebar-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--fg-secondary);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  margin-right: 8px;
+}
+
+.sidebar-toggle:hover {
+  color: var(--fg-primary);
+  background: var(--bg-tertiary);
+  border-color: var(--fg-secondary);
+}
+
 /* ============ Sidebar ============ */
 
 .sidebar {

@@ -4,6 +4,7 @@ import type { DashboardState, DashboardAction, Message } from './types';
 
 export const savedMode = typeof window !== 'undefined' ? localStorage.getItem('dashboardMode') || 'participate' : 'participate';
 export const savedNick = typeof window !== 'undefined' ? localStorage.getItem('dashboardNick') : null;
+export const savedSidebarOpen = typeof window !== 'undefined' ? localStorage.getItem('sidebarOpen') === 'true' : false;
 
 const loadPersistedMessages = (): Record<string, Message[]> => {
   try {
@@ -49,6 +50,7 @@ export const initialState: DashboardState = {
   logs: [],
   logsOpen: false,
   pulseOpen: false,
+  sidebarOpen: savedSidebarOpen,
   activity: { agents: {}, totalMsgsPerMin: 0 }
 };
 
@@ -177,6 +179,11 @@ export function reducer(state: DashboardState, action: DashboardAction): Dashboa
       return { ...state, logs: [] };
     case 'TOGGLE_PULSE':
       return { ...state, pulseOpen: !state.pulseOpen };
+    case 'TOGGLE_SIDEBAR': {
+      const newOpen = !state.sidebarOpen;
+      if (typeof window !== 'undefined') localStorage.setItem('sidebarOpen', String(newOpen));
+      return { ...state, sidebarOpen: newOpen };
+    }
     case 'CONNECTION_ERROR':
       return { ...state, connectionStatus: 'error', connectionError: action.error };
     case 'CONNECTING':

@@ -29,8 +29,12 @@ export default function App() {
         <TopBar state={state} dispatch={dispatch} send={send} theme={theme} setTheme={setTheme} />
         <div className="content-area">
           <div className="main">
-            <Sidebar state={state} dispatch={dispatch} sidebarWidth={sidebar.width} />
-            <div className="resize-handle" ref={sidebar.handleRef} onMouseDown={sidebar.onMouseDown} />
+            {state.sidebarOpen && (
+              <>
+                <Sidebar state={state} dispatch={dispatch} sidebarWidth={sidebar.width} />
+                <div className="resize-handle" ref={sidebar.handleRef} onMouseDown={sidebar.onMouseDown} />
+              </>
+            )}
             {state.pulseOpen ? (
               <NetworkPulse state={state} dispatch={dispatch} />
             ) : (
