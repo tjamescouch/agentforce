@@ -78,7 +78,6 @@ export interface DashboardState {
   logs: LogEntry[];
   logsOpen: boolean;
   pulseOpen: boolean;
-  sidebarOpen: boolean;
   activity: ActivityStats;
 }
 

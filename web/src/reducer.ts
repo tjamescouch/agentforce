@@ -51,7 +51,6 @@ export const initialState: DashboardState = {
   logs: [],
   logsOpen: false,
   pulseOpen: false,
-  sidebarOpen: savedSidebarOpen,
   activity: { agents: {}, totalMsgsPerMin: 0 }
 };
 
