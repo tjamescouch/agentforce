@@ -8,7 +8,7 @@
   margin: 0;
   padding: 0;
   scrollbar-width: thin;
-  scrollbar-color: var(--border) var(--bg-secondary);
+  scrollbar-color: rgba(128, 128, 128, 0.2) transparent;
 }
 
 *:focus-visible {
@@ -470,9 +470,14 @@ body {
   background: var(--bg-tertiary);
 }
 
+.list-item:active {
+  transform: scale(0.98);
+}
+
 .list-item.selected {
-  background: rgba(59, 130, 246, 0.08);
+  background: rgba(59, 130, 246, 0.1);
   color: var(--accent-blue);
+  border-color: rgba(59, 130, 246, 0.15);
 }
 
 .dot {
@@ -1119,7 +1124,7 @@ body {
 /* ============ Scrollbar ============ */
 
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -1127,12 +1132,16 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
+  background: rgba(128, 128, 128, 0.2);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
+  background: rgba(128, 128, 128, 0.4);
+  border: 2px solid transparent;
+  background-clip: content-box;
 }
 
 /* ============ Badges ============ */
