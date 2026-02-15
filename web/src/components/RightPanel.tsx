@@ -18,7 +18,7 @@ export function RightPanel({ state, dispatch, send, panelWidth }: RightPanelProp
   const panelStyle = { width: panelWidth };
   const [renameValue, setRenameValue] = useState('');
   const [isRenaming, setIsRenaming] = useState(false);
-  const [visageMode, setVisageMode] = useState<'2d' | '3d'>('2d');
+  const [visageMode, setVisageMode] = useState<'2d' | '3d'>('3d');
 
   const agent = state.selectedAgent;
 
