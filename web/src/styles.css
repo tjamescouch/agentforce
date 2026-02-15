@@ -337,6 +337,32 @@ body {
   border-color: var(--fg-secondary);
 }
 
+.topbar-icon-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--fg-secondary);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  margin-right: 4px;
+}
+
+.topbar-icon-btn:hover {
+  color: var(--fg-primary);
+  background: var(--bg-tertiary);
+  border-color: var(--fg-secondary);
+}
+
+.topbar-icon-btn.active {
+  color: var(--accent-blue);
+  background: var(--bg-tertiary);
+  border-color: var(--accent-blue);
+}
+
 /* ============ Sidebar ============ */
 
 .sidebar {
