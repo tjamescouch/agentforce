@@ -61,6 +61,16 @@ export function TopBar({ state, dispatch, send, theme, setTheme }: TopBarProps) 
         {state.dashboardAgent && (
           <span className="dashboard-nick">{state.dashboardAgent.nick}</span>
         )}
+        <button
+          className="sidebar-toggle"
+          onClick={() => dispatch({ type: 'TOGGLE_RIGHT_PANEL' })}
+          title={state.rightPanelOpen ? 'Hide detail panel' : 'Show detail panel'}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="1" y="2" width="14" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.2" fill="none"/>
+            <line x1="10.5" y1="2" x2="10.5" y2="14" stroke="currentColor" strokeWidth="1.2"/>
+          </svg>
+        </button>
         <div className="settings-menu" ref={menuRef}>
           <button
             className={`settings-btn ${menuOpen ? 'active' : ''}`}
@@ -80,6 +90,15 @@ export function TopBar({ state, dispatch, send, theme, setTheme }: TopBarProps) 
                 <span className="settings-item-label">Sidebar</span>
                 <span className={`settings-item-badge ${state.sidebarOpen ? "on" : ""}`}>
                   {state.sidebarOpen ? "On" : "Off"}
+                </span>
+              </button>
+              <button
+                className="settings-item"
+                onClick={() => { dispatch({ type: 'TOGGLE_RIGHT_PANEL' }); setMenuOpen(false); }}
+              >
+                <span className="settings-item-label">Detail Panel</span>
+                <span className={`settings-item-badge ${state.rightPanelOpen ? 'on' : ''}`}>
+                  {state.rightPanelOpen ? 'On' : 'Off'}
                 </span>
               </button>
               <button

@@ -62,6 +62,7 @@ export interface DashboardState {
   connectionError: string | null;
   mode: string;
   sidebarOpen: boolean;
+  rightPanelOpen: boolean;
   agents: Record<string, Agent>;
   channels: Record<string, Channel>;
   messages: Record<string, Message[]>;
@@ -88,6 +89,7 @@ export type DashboardAction =
   | { type: 'MESSAGE'; data: Message }
   | { type: 'AGENT_UPDATE'; data: Agent }
   | { type: 'TOGGLE_SIDEBAR' }
+  | { type: 'TOGGLE_RIGHT_PANEL' }
   | { type: 'SET_MODE'; mode: string }
   | { type: 'SELECT_CHANNEL'; channel: string }
   | { type: 'SELECT_AGENT'; agent: Agent }

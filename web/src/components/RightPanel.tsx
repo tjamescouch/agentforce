@@ -17,9 +17,19 @@ export function RightPanel({ state, dispatch, send, panelWidth }: RightPanelProp
 
   const agent = state.selectedAgent;
 
+  const handleClose = () => dispatch({ type: 'TOGGLE_RIGHT_PANEL' });
+
   if (!agent) {
     return (
       <div className="right-panel" style={panelStyle}>
+        <div className="right-panel-header">
+          <span className="right-panel-title">Details</span>
+          <button className="panel-close-btn" onClick={handleClose} title="Close panel">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M3.5 3.5L10.5 10.5M10.5 3.5L3.5 10.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+            </svg>
+          </button>
+        </div>
         <div className="empty">Select an agent to view details</div>
       </div>
     );
@@ -36,7 +46,14 @@ export function RightPanel({ state, dispatch, send, panelWidth }: RightPanelProp
 
   return (
     <div className="right-panel" style={panelStyle}>
-      <h3>AGENT DETAIL</h3>
+      <div className="right-panel-header">
+        <h3>AGENT DETAIL</h3>
+        <button className="panel-close-btn" onClick={handleClose} title="Close panel">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M3.5 3.5L10.5 10.5M10.5 3.5L3.5 10.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+          </svg>
+        </button>
+      </div>
       <div className="agent-detail">
         {isRenaming ? (
           <form onSubmit={handleRename} className="rename-form">
