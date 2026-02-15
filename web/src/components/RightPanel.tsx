@@ -1,7 +1,11 @@
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, lazy, Suspense } from 'react';
 import type { DashboardState, DashboardAction, WsSendFn } from '../types';
 import { agentColor, formatMsgRate } from '../utils';
 import { VisagePanel } from './VisagePanel';
+
+const Visage3DPanel = lazy(() =>
+  import('./Visage3DPanel').then(m => ({ default: m.Visage3DPanel }))
+);
 
 interface RightPanelProps {
   state: DashboardState;
@@ -14,6 +18,7 @@ export function RightPanel({ state, dispatch, send, panelWidth }: RightPanelProp
   const panelStyle = { width: panelWidth };
   const [renameValue, setRenameValue] = useState('');
   const [isRenaming, setIsRenaming] = useState(false);
+  const [visageMode, setVisageMode] = useState<'2d' | '3d'>('2d');
 
   const agent = state.selectedAgent;
 
@@ -43,6 +48,8 @@ export function RightPanel({ state, dispatch, send, panelWidth }: RightPanelProp
       setRenameValue('');
     }
   };
+
+  const msgs = state.messages[state.selectedChannel] || [];
 
   return (
     <div className="right-panel" style={panelStyle}>
@@ -112,10 +119,63 @@ export function RightPanel({ state, dispatch, send, panelWidth }: RightPanelProp
             ))}
           </div>
         )}
-        <VisagePanel
-          agent={agent}
-          messages={state.messages[state.selectedChannel] || []}
-        />
+        <div className="visage-mode-toggle" style={{
+          display: 'flex',
+          gap: '4px',
+          margin: '8px 0 4px',
+          fontSize: '10px',
+          fontFamily: 'monospace',
+        }}>
+          <button
+            onClick={() => setVisageMode('2d')}
+            style={{
+              padding: '2px 8px',
+              background: visageMode === '2d' ? 'rgba(100,100,255,0.2)' : 'transparent',
+              border: `1px solid ${visageMode === '2d' ? '#6666ff' : '#333'}`,
+              color: visageMode === '2d' ? '#aaf' : '#666',
+              borderRadius: '3px',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontSize: '10px',
+            }}
+          >
+            2D
+          </button>
+          <button
+            onClick={() => setVisageMode('3d')}
+            style={{
+              padding: '2px 8px',
+              background: visageMode === '3d' ? 'rgba(100,100,255,0.2)' : 'transparent',
+              border: `1px solid ${visageMode === '3d' ? '#6666ff' : '#333'}`,
+              color: visageMode === '3d' ? '#aaf' : '#666',
+              borderRadius: '3px',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontSize: '10px',
+            }}
+          >
+            3D
+          </button>
+        </div>
+        {visageMode === '2d' ? (
+          <VisagePanel agent={agent} messages={msgs} />
+        ) : (
+          <Suspense fallback={
+            <div className="visage-panel" style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              aspectRatio: '1', background: '#111', borderRadius: '4px',
+              color: '#555', fontFamily: 'monospace', fontSize: '11px',
+            }}>
+              loading 3d engine...
+            </div>
+          }>
+            <Visage3DPanel
+              agent={agent}
+              messages={msgs}
+              onFallback={() => setVisageMode('2d')}
+            />
+          </Suspense>
+        )}
       </div>
     </div>
   );
