@@ -37,7 +37,7 @@ export function TopBar({ state, dispatch, send, theme, setTheme }: TopBarProps) 
   return (
     <div className="topbar">
       <div className="topbar-left">
-        <span className="logo">AgentForce</span>
+        <span className="logo">agentforce</span>
         <span className={`status ${state.connected ? 'online' : 'offline'}`}>
           {state.connected ? 'Connected' : 'Disconnected'}
         </span>
