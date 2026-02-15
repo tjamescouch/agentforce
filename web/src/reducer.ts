@@ -52,7 +52,6 @@ export const initialState: DashboardState = {
   saveModal: null,
   logs: [],
   logsOpen: false,
-  pulseOpen: false,
   lockScreen: false,
   activity: { agents: {}, totalMsgsPerMin: 0 }
 };
@@ -182,8 +181,6 @@ export function reducer(state: DashboardState, action: DashboardAction): Dashboa
       return { ...state, logs: [] };
     case 'TOGGLE_LOCK':
       return { ...state, lockScreen: !state.lockScreen };
-    case 'TOGGLE_PULSE':
-      return { ...state, pulseOpen: !state.pulseOpen };
     case 'TOGGLE_SIDEBAR': {
       const newOpen = !state.sidebarOpen;
       if (typeof window !== 'undefined') localStorage.setItem('sidebarOpen', String(newOpen));

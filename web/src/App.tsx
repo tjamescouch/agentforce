@@ -9,7 +9,6 @@ import { Sidebar } from './components/Sidebar';
 import { MessageFeed } from './components/MessageFeed';
 import { RightPanel } from './components/RightPanel';
 import { DropZone } from './components/DropZone';
-import { NetworkPulse } from './components/NetworkPulse';
 import { LogsPanel } from './components/LogsPanel';
 import { SendFileModal } from './components/SendFileModal';
 import { SaveModal } from './components/SaveModal';
@@ -36,13 +35,9 @@ export default function App() {
                 <div className="resize-handle" ref={sidebar.handleRef} onMouseDown={sidebar.onMouseDown} />
               </>
             )}
-            {state.pulseOpen ? (
-              <NetworkPulse state={state} dispatch={dispatch} />
-            ) : (
-              <DropZone state={state} dispatch={dispatch}>
-                <MessageFeed state={state} dispatch={dispatch} send={send} />
-              </DropZone>
-            )}
+            <DropZone state={state} dispatch={dispatch}>
+              <MessageFeed state={state} dispatch={dispatch} send={send} />
+            </DropZone>
             {state.rightPanelOpen && (
               <>
                 <div className="resize-handle" ref={rightPanel.handleRef} onMouseDown={rightPanel.onMouseDown} />

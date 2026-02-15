@@ -78,7 +78,6 @@ export interface DashboardState {
   saveModal: { transferId: string; files: { name: string; size: number }[] } | null;
   logs: LogEntry[];
   logsOpen: boolean;
-  pulseOpen: boolean;
   lockScreen: boolean;
   activity: ActivityStats;
 }
@@ -106,7 +105,6 @@ export type DashboardAction =
   | { type: 'LOG_HISTORY'; data: LogEntry[] }
   | { type: 'TOGGLE_LOGS' }
   | { type: 'CLEAR_LOGS' }
-  | { type: 'TOGGLE_PULSE' }
   | { type: 'TOGGLE_SIDEBAR' }
   | { type: 'CONNECTION_ERROR'; error: string }
   | { type: 'CONNECTING' }
