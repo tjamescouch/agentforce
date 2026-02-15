@@ -143,7 +143,11 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>): WsSendF
             dispatch({ type: 'ACTIVITY', data: msg.data });
             break;
           case 'error':
-            console.error('Server error:', msg.data?.code, msg.data?.message);
+            if (msg.data?.code === 'AUTH_REQUIRED') {
+              console.warn('Channel auth required (non-fatal):', msg.data?.message);
+            } else {
+              console.error('Server error:', msg.data?.code, msg.data?.message);
+            }
             if (msg.data?.code === 'NOT_ALLOWED') {
               dispatch({ type: 'CONNECTION_ERROR', error: msg.data?.message || 'Connection rejected by server' });
             }

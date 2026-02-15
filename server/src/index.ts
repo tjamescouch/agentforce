@@ -636,8 +636,12 @@ function handleAgentChatMessage(msg: AgentChatMsg): void {
             agentCount: ch.agents || 0,
             messages: new CircularBuffer(200)
           });
-          // Auto-join newly discovered public channels
-          send({ type: 'JOIN', channel: ch.name });
+          // Auto-join newly discovered channels — skip known restricted channels
+          // to avoid AUTH_REQUIRED errors that break dashboard rendering
+          const restricted = new Set(["#ops"]);
+          if (!restricted.has(ch.name)) {
+            send({ type: "JOIN", channel: ch.name });
+          }
         } else {
           state.channels.get(ch.name)!.agentCount = ch.agents || 0;
         }
@@ -910,12 +914,15 @@ function handlePerSessionMessage(client: DashboardClient, msg: AgentChatMsg): vo
           }
         }));
       }
-      // Join channels the observer is already in
+      // Join channels the observer is already in (skip restricted channels)
+      const restrictedChannels = new Set(["#ops"]);
       for (const channelName of state.channels.keys()) {
-        client.agentChatWs?.send(JSON.stringify({
-          type: 'JOIN',
-          channel: channelName
-        }));
+        if (!restrictedChannels.has(channelName)) {
+          client.agentChatWs?.send(JSON.stringify({
+            type: "JOIN",
+            channel: channelName
+          }));
+        }
       }
       break;
 
