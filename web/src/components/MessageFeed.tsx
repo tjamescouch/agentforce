@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, FormEvent } from 'react';
 import type { DashboardState, DashboardAction, WsSendFn } from '../types';
-import { agentColor, formatTime, formatSize, renderMarkdown } from '../utils';
+import { agentColor, formatTime, formatSize, renderMarkdown, displayName, shortId } from '../utils';
 import { FileOfferBanner } from './FileOfferBanner';
 import { TransferBar } from './TransferBar';
 
@@ -56,7 +56,7 @@ export function MessageFeed({ state, dispatch, send }: MessageFeedProps) {
     .filter(([key, ts]) => key.endsWith(`:${state.selectedChannel}`) && Date.now() - ts < 4000)
     .map(([key]) => {
       const agentId = key.split(':')[0];
-      return state.agents[agentId]?.nick || agentId;
+      return displayName(agentId, state.agents[agentId]?.nick);
     });
 
   const jumpToBottom = () => {
@@ -126,10 +126,10 @@ export function MessageFeed({ state, dispatch, send }: MessageFeedProps) {
           return (
             <div key={msg.id || i} className="message">
               <span className="time">[{formatTime(msg.ts)}]</span>
-              <span className="from" style={{ color: agentColor(state.agents[msg.from]?.nick || msg.fromNick || msg.from) }}>
-                &lt;{state.agents[msg.from]?.nick || msg.fromNick || msg.from}&gt;
+              <span className="from" style={{ color: agentColor(displayName(msg.from, state.agents[msg.from]?.nick, msg.fromNick)) }}>
+                {displayName(msg.from, state.agents[msg.from]?.nick, msg.fromNick)}
               </span>
-              <span className="agent-id">{msg.from}</span>
+              <span className="agent-id" title={msg.from}>{shortId(msg.from)}</span>
               {state.agents[msg.from]?.verified
                 ? <span className="verified-badge">&#x2713;</span>
                 : state.agents[msg.from] && <span className="unverified-badge">&#x26A0;</span>

@@ -1,5 +1,5 @@
 import type { Agent, DashboardState, DashboardAction } from '../types';
-import { agentColor } from '../utils';
+import { agentColor, displayName, shortId } from '../utils';
 
 interface SidebarProps {
   state: DashboardState;
@@ -10,14 +10,11 @@ interface SidebarProps {
 export function Sidebar({ state, dispatch, sidebarWidth }: SidebarProps) {
   const agents = Object.values(state.agents).sort((a, b) => {
     if (a.online !== b.online) return b.online ? 1 : -1;
-    return (a.nick || a.id).localeCompare(b.nick || b.id);
+    return displayName(a.id, a.nick).localeCompare(displayName(b.id, b.nick));
   });
 
-  const getDisplayName = (agent: Agent): string => {
-    const nick = agent.nick || agent.id;
-    const shortId = agent.id.replace('@', '').slice(0, 6);
-    if (nick === agent.id) return nick;
-    return `${nick} (${shortId})`;
+  const getAgentDisplayName = (agent: Agent): string => {
+    return displayName(agent.id, agent.nick);
   };
 
   const channels = Object.values(state.channels);
@@ -35,8 +32,8 @@ export function Sidebar({ state, dispatch, sidebarWidth }: SidebarProps) {
             >
               <span className={`dot ${agent.online ? 'online' : 'offline'}`} />
               <span className="agent-type-icon" title={agent.isDashboard ? 'Dashboard user' : 'Agent'}>{agent.isDashboard ? '\uD83E\uDDD1' : '\uD83E\uDD16'}</span>
-              <span className="nick" style={{ color: agentColor(agent.nick || agent.id) }}>
-                {getDisplayName(agent)}
+              <span className="nick" style={{ color: agentColor(getAgentDisplayName(agent)) }}>
+                {getAgentDisplayName(agent)}
               </span>
               {agent.verified
                 ? <span className="verified-badge" title="Verified (allowlisted)">&#x2713;</span>
