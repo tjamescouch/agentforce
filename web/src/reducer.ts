@@ -5,6 +5,7 @@ import type { DashboardState, DashboardAction, Message } from './types';
 export const savedMode = typeof window !== 'undefined' ? localStorage.getItem('dashboardMode') || 'participate' : 'participate';
 export const savedNick = typeof window !== 'undefined' ? localStorage.getItem('dashboardNick') : null;
 export const savedSidebarOpen = typeof window !== 'undefined' ? localStorage.getItem('sidebarOpen') === 'true' : false;
+export const savedRightPanelOpen = typeof window !== 'undefined' ? (localStorage.getItem('rightPanelOpen') ?? 'true') === 'true' : true;
 
 const loadPersistedMessages = (): Record<string, Message[]> => {
   try {
@@ -35,6 +36,7 @@ export const initialState: DashboardState = {
   connectionError: null,
   mode: savedMode,
   sidebarOpen: savedSidebarOpen,
+  rightPanelOpen: savedRightPanelOpen,
   agents: {},
   channels: {},
   messages: loadPersistedMessages(),
@@ -142,7 +144,7 @@ export function reducer(state: DashboardState, action: DashboardAction): Dashboa
       return { ...state, selectedChannel: action.channel, unreadCounts: clearedUnread, activityCounts: clearedActivity };
     }
     case 'SELECT_AGENT':
-      return { ...state, selectedAgent: action.agent, rightPanel: 'detail' };
+      return { ...state, selectedAgent: action.agent, rightPanel: 'detail', rightPanelOpen: true };
     case 'SET_RIGHT_PANEL':
       return { ...state, rightPanel: action.panel };
     case 'TYPING': {
@@ -183,6 +185,11 @@ export function reducer(state: DashboardState, action: DashboardAction): Dashboa
       const newOpen = !state.sidebarOpen;
       if (typeof window !== 'undefined') localStorage.setItem('sidebarOpen', String(newOpen));
       return { ...state, sidebarOpen: newOpen };
+    }
+    case 'TOGGLE_RIGHT_PANEL': {
+      const newRightOpen = !state.rightPanelOpen;
+      if (typeof window !== 'undefined') localStorage.setItem('rightPanelOpen', String(newRightOpen));
+      return { ...state, rightPanelOpen: newRightOpen };
     }
     case 'CONNECTION_ERROR':
       return { ...state, connectionStatus: 'error', connectionError: action.error };
