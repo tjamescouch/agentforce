@@ -1318,8 +1318,8 @@ function handleDashboardMessage(client: DashboardClient, msg: DashboardMessage):
       }
       {
         const content = (msg.data.content as string || '').trim();
-        if (!content || content.length > 4000) {
-          client.ws.send(JSON.stringify({ type: 'error', data: { code: 'INVALID_MESSAGE', message: 'Message empty or too long (max 4000)' } }));
+        if (!content || content.length > 16000) {
+          client.ws.send(JSON.stringify({ type: 'error', data: { code: 'INVALID_MESSAGE', message: 'Message empty or too long (max 16000)' } }));
           return;
         }
         const sig = client.identity ? signMessageWithIdentity(content, client.identity) : null;
@@ -1332,7 +1332,7 @@ function handleDashboardMessage(client: DashboardClient, msg: DashboardMessage):
       const { mode: newMode, nick: preferredNick, identity: browserIdentity } = msg.data as {
         mode: string; nick?: string; identity?: { publicKey: string; secretKey: string }
       };
-      if (newMode === 'participate' && client.mode !== 'participate') {
+      if (newMode === 'participate' && (!client.agentChatWs || client.agentChatWs.readyState !== WebSocket.OPEN)) {
         connectClientToAgentChat(client, preferredNick || undefined, browserIdentity || undefined);
       } else if (newMode === 'lurk' && client.mode !== 'lurk') {
         disconnectClientFromAgentChat(client);
@@ -1687,7 +1687,7 @@ wss.on('connection', (ws, req) => {
     ws,
     ip,
     id: `client-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    mode: 'lurk',
+    mode: 'participate',
     subscriptions: new Set(),
     lastPing: Date.now(),
     messageTimestamps: [],
