@@ -29,8 +29,12 @@ export default function App() {
         <TopBar state={state} dispatch={dispatch} send={send} theme={theme} setTheme={setTheme} />
         <div className="content-area">
           <div className="main">
-            <Sidebar state={state} dispatch={dispatch} sidebarWidth={sidebar.width} />
-            <div className="resize-handle" ref={sidebar.handleRef} onMouseDown={sidebar.onMouseDown} />
+            {state.sidebarOpen && (
+              <>
+                <Sidebar state={state} dispatch={dispatch} sidebarWidth={sidebar.width} />
+                <div className="resize-handle" ref={sidebar.handleRef} onMouseDown={sidebar.onMouseDown} />
+              </>
+            )}
             {state.pulseOpen ? (
               <NetworkPulse state={state} dispatch={dispatch} />
             ) : (
@@ -38,7 +42,7 @@ export default function App() {
                 <MessageFeed state={state} dispatch={dispatch} send={send} />
               </DropZone>
             )}
-            <div className="resize-handle" ref={rightPanel.handleRef} onMouseDown={rightPanel.onMouseDown} />
+                <div className="resize-handle" ref={rightPanel.handleRef} onMouseDown={rightPanel.onMouseDown} />
             <RightPanel state={state} dispatch={dispatch} send={send} panelWidth={rightPanel.width} />
           </div>
           {state.logsOpen && (
