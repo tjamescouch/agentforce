@@ -37,6 +37,11 @@ export function TopBar({ state, dispatch, send, theme, setTheme }: TopBarProps) 
   return (
     <div className="topbar">
       <div className="topbar-left">
+        <div className="traffic-lights" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          <span className={`traffic-dot red ${!state.connected ? 'active' : ''}`} title="Close" />
+          <span className="traffic-dot yellow" title="Minimize" />
+          <span className={`traffic-dot green ${state.connected ? 'active' : ''}`} title="Connected" />
+        </div>
         <button
           className="sidebar-toggle"
           onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
