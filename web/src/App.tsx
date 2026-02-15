@@ -14,6 +14,7 @@ import { LogsPanel } from './components/LogsPanel';
 import { SendFileModal } from './components/SendFileModal';
 import { SaveModal } from './components/SaveModal';
 import { ConnectionOverlay } from './components/ConnectionOverlay';
+import { LockScreen } from './components/LockScreen';
 
 export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -61,6 +62,7 @@ export default function App() {
         <SendFileModal state={state} dispatch={dispatch} send={send} />
         <SaveModal state={state} dispatch={dispatch} send={send} />
         <ConnectionOverlay state={state} />
+        <LockScreen state={state} dispatch={dispatch} />
       </div>
     </DashboardContext.Provider>
   );
