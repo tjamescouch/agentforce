@@ -11,21 +11,6 @@ interface TopBarProps {
 }
 
 export function TopBar({ state, dispatch, send, theme, setTheme }: TopBarProps) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  // Close menu on outside click
-  useEffect(() => {
-    if (!menuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [menuOpen]);
-
   const cycleTheme = () => {
     const order: Theme[] = ['system', 'light', 'dark'];
     const next = order[(order.indexOf(theme) + 1) % order.length];
@@ -33,12 +18,10 @@ export function TopBar({ state, dispatch, send, theme, setTheme }: TopBarProps) 
   };
 
   const themeIcon = theme === 'dark' ? (
-    // Moon icon for dark mode
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="M13.36 10.05a5.5 5.5 0 0 1-7.41-7.41 6 6 0 1 0 7.41 7.41z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
     </svg>
   ) : (
-    // Sun icon for light/system mode
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
       <circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.2" fill="none"/>
       <line x1="8" y1="1" x2="8" y2="3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
@@ -52,12 +35,12 @@ export function TopBar({ state, dispatch, send, theme, setTheme }: TopBarProps) 
     </svg>
   );
 
-  const themeTitle = theme === 'system' ? 'Theme: System (click to cycle)' : theme === 'light' ? 'Theme: Light (click to cycle)' : 'Theme: Dark (click to cycle)';
+  const themeTitle = theme === 'system' ? 'Theme: System' : theme === 'light' ? 'Theme: Light' : 'Theme: Dark';
 
   return (
     <div className="topbar">
       <div className="topbar-left">
-        {/* Logs toggle icon */}
+        {/* Logs toggle */}
         <button
           className={`topbar-icon-btn ${state.logsOpen ? 'active' : ''}`}
           onClick={() => dispatch({ type: 'TOGGLE_LOGS' })}
@@ -70,7 +53,7 @@ export function TopBar({ state, dispatch, send, theme, setTheme }: TopBarProps) 
             <line x1="4.5" y1="11" x2="8.5" y2="11" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
           </svg>
         </button>
-        {/* Light/dark mode toggle icon */}
+        {/* Theme toggle */}
         <button
           className="topbar-icon-btn"
           onClick={cycleTheme}
@@ -103,6 +86,7 @@ export function TopBar({ state, dispatch, send, theme, setTheme }: TopBarProps) 
         {state.dashboardAgent && (
           <span className="dashboard-nick">{state.dashboardAgent.nick}</span>
         )}
+        {/* Right panel toggle */}
         <button
           className="sidebar-toggle"
           onClick={() => dispatch({ type: 'TOGGLE_RIGHT_PANEL' })}
@@ -113,64 +97,17 @@ export function TopBar({ state, dispatch, send, theme, setTheme }: TopBarProps) 
             <line x1="10.5" y1="2" x2="10.5" y2="14" stroke="currentColor" strokeWidth="1.2"/>
           </svg>
         </button>
-        {/* Power button (replaces gear icon) — opens settings dropdown */}
-        <div className="settings-menu" ref={menuRef}>
-          <button
-            className={`settings-btn ${menuOpen ? 'active' : ''}`}
-            onClick={() => setMenuOpen(!menuOpen)}
-            title="Settings"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M8 1.5v4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
-              <path d="M4.5 3.2A5.5 5.5 0 1 0 11.5 3.2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" fill="none"/>
-            </svg>
-          </button>
-          {menuOpen && (
-            <div className="settings-dropdown">
-              <button
-                className="settings-item"
-                onClick={() => { dispatch({ type: "TOGGLE_SIDEBAR" }); setMenuOpen(false); }}
-              >
-                <span className="settings-item-label">Sidebar</span>
-                <span className={`settings-item-badge ${state.sidebarOpen ? "on" : ""}`}>
-                  {state.sidebarOpen ? "On" : "Off"}
-                </span>
-              </button>
-              <button
-                className="settings-item"
-                onClick={() => { dispatch({ type: 'TOGGLE_RIGHT_PANEL' }); setMenuOpen(false); }}
-              >
-                <span className="settings-item-label">Detail Panel</span>
-                <span className={`settings-item-badge ${state.rightPanelOpen ? 'on' : ''}`}>
-                  {state.rightPanelOpen ? 'On' : 'Off'}
-                </span>
-              </button>
-              <button
-                className="settings-item"
-                onClick={() => { dispatch({ type: 'TOGGLE_PULSE' }); setMenuOpen(false); }}
-              >
-                <span className="settings-item-label">Network Pulse</span>
-                <span className={`settings-item-badge ${state.pulseOpen ? 'on' : ''}`}>
-                  {state.pulseOpen ? 'On' : 'Off'}
-                </span>
-              </button>
-              <button
-                className="settings-item"
-                onClick={() => { dispatch({ type: 'TOGGLE_LOGS' }); setMenuOpen(false); }}
-              >
-                <span className="settings-item-label">Server Logs</span>
-                <span className={`settings-item-badge ${state.logsOpen ? 'on' : ''}`}>
-                  {state.logsOpen ? 'On' : 'Off'}
-                </span>
-              </button>
-              <div className="settings-divider" />
-              <button className="settings-item" onClick={() => { cycleTheme(); setMenuOpen(false); }}>
-                <span className="settings-item-label">Theme</span>
-                <span className="settings-item-value">{theme === 'system' ? 'System' : theme === 'light' ? 'Light' : 'Dark'}</span>
-              </button>
-            </div>
-          )}
-        </div>
+        {/* Power button — triggers lock screen */}
+        <button
+          className="power-btn"
+          onClick={() => dispatch({ type: 'TOGGLE_LOCK' })}
+          title="Lock screen"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M8 1.5v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            <path d="M4.5 3.2A5.5 5.5 0 1 0 11.5 3.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none"/>
+          </svg>
+        </button>
       </div>
     </div>
   );
