@@ -27,12 +27,14 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   };
 
   return (
-    <div className="login-screen">
+    <div className="login-screen" role="main">
       <div className="login-card">
         <div className="login-logo">agentforce</div>
-        <p className="login-subtitle">Enter your name to connect</p>
-        <form className="login-form" onSubmit={handleSubmit}>
+        <p className="login-subtitle" id="login-desc">Enter your name to connect</p>
+        <form className="login-form" onSubmit={handleSubmit} aria-describedby="login-desc">
+          <label htmlFor="login-name" className="sr-only">Display name</label>
           <input
+            id="login-name"
             className="login-input"
             type="text"
             value={name}
@@ -40,8 +42,10 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
             placeholder="Your name"
             autoFocus
             maxLength={24}
+            aria-invalid={!!error}
+            aria-describedby={error ? 'login-error' : undefined}
           />
-          {error && <div className="login-error">{error}</div>}
+          {error && <div id="login-error" className="login-error" role="alert">{error}</div>}
           <button className="login-button" type="submit">Connect</button>
         </form>
         <p className="login-hint">
