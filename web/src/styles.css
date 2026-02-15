@@ -610,10 +610,17 @@ body {
 
 .agent-id {
   color: var(--text-muted);
-  font-size: 0.75em;
+  font-size: 0.7em;
   margin-left: 2px;
   margin-right: 6px;
   font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  opacity: 0.4;
+  transition: opacity 0.15s ease;
+  cursor: help;
+}
+
+.message:hover .agent-id {
+  opacity: 0.8;
 }
 
 /* Markdown in messages */

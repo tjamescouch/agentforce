@@ -122,7 +122,7 @@ export function MessageFeed({ state, dispatch, send }: MessageFeedProps) {
     .filter(([key, ts]) => key.endsWith(`:${state.selectedChannel}`) && Date.now() - ts < 4000)
     .map(([key]) => {
       const agentId = key.split(':')[0];
-      return state.agents[agentId]?.nick || agentId;
+      return displayName(agentId, state.agents[agentId]?.nick);
     });
 
   const jumpToBottom = () => {
