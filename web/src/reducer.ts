@@ -34,6 +34,7 @@ export const initialState: DashboardState = {
   connectionStatus: 'connecting',
   connectionError: null,
   mode: savedMode,
+  sidebarOpen: savedSidebarOpen,
   agents: {},
   channels: {},
   messages: loadPersistedMessages(),

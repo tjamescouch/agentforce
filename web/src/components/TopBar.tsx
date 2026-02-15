@@ -75,6 +75,15 @@ export function TopBar({ state, dispatch, send, theme, setTheme }: TopBarProps) 
             <div className="settings-dropdown">
               <button
                 className="settings-item"
+                onClick={() => { dispatch({ type: "TOGGLE_SIDEBAR" }); setMenuOpen(false); }}
+              >
+                <span className="settings-item-label">Sidebar</span>
+                <span className={`settings-item-badge ${state.sidebarOpen ? "on" : ""}`}>
+                  {state.sidebarOpen ? "On" : "Off"}
+                </span>
+              </button>
+              <button
+                className="settings-item"
                 onClick={() => { dispatch({ type: 'TOGGLE_PULSE' }); setMenuOpen(false); }}
               >
                 <span className="settings-item-label">Network Pulse</span>

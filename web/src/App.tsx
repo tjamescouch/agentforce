@@ -42,7 +42,7 @@ export default function App() {
                 <MessageFeed state={state} dispatch={dispatch} send={send} />
               </DropZone>
             )}
-            <div className="resize-handle" ref={rightPanel.handleRef} onMouseDown={rightPanel.onMouseDown} />
+                <div className="resize-handle" ref={rightPanel.handleRef} onMouseDown={rightPanel.onMouseDown} />
             <RightPanel state={state} dispatch={dispatch} send={send} panelWidth={rightPanel.width} />
           </div>
           {state.logsOpen && (
