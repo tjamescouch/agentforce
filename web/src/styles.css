@@ -2523,3 +2523,20 @@ html[data-theme="dark"] .connection-steps {
   white-space: nowrap;
   border-width: 0;
 }
+
+/* ============ Send Error ============ */
+.send-error {
+  padding: 6px 16px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: var(--accent-red);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+  animation: error-fade-in 0.2s ease;
+}
+
+@keyframes error-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}

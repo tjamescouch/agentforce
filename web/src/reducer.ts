@@ -54,6 +54,7 @@ export const initialState: DashboardState = {
   logsOpen: false,
   pulseOpen: false,
   lockScreen: false,
+  sendError: null,
   activity: { agents: {}, totalMsgsPerMin: 0 }
 };
 
@@ -230,6 +231,10 @@ export function reducer(state: DashboardState, action: DashboardAction): Dashboa
     }
     case 'ACTIVITY':
       return { ...state, activity: action.data };
+    case 'SEND_ERROR':
+      return { ...state, sendError: action.error };
+    case 'CLEAR_SEND_ERROR':
+      return { ...state, sendError: null };
     default:
       return state;
   }

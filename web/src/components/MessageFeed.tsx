@@ -78,6 +78,7 @@ interface MessageFeedProps {
 
 export function MessageFeed({ state, dispatch, send }: MessageFeedProps) {
   const [input, setInput] = useState('');
+  const [sendError, setSendError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -168,8 +169,14 @@ export function MessageFeed({ state, dispatch, send }: MessageFeedProps) {
       setInput('');
       return;
     }
+    if (!state.connected) {
+      setSendError('Not connected');
+      setTimeout(() => setSendError(null), 3000);
+      return;
+    }
     send({ type: 'send_message', data: { to: state.selectedChannel, content: input } });
     setInput('');
+    setSendError(null);
     setIsAtBottom(true);
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -217,6 +224,9 @@ export function MessageFeed({ state, dispatch, send }: MessageFeedProps) {
       <div className="input-resize-handle" onMouseDown={onInputResizeMouseDown}>
         <div className="input-resize-grip" />
       </div>
+      {(sendError || state.sendError) && (
+        <div className="send-error" role="alert">{sendError || state.sendError}</div>
+      )}
       <form className="input-bar" onSubmit={handleSend}>
         <textarea
           value={input}
