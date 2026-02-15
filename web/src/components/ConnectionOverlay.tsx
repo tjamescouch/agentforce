@@ -20,7 +20,7 @@ export function ConnectionOverlay({ state }: ConnectionOverlayProps) {
   return (
     <div className="connection-overlay">
       <div className="connection-card">
-        <div className="connection-logo">AgentForce</div>
+        <div className="connection-logo">agentforce</div>
         {!isError && <div className="connection-spinner" />}
         {isError && <div className="connection-error-icon">!</div>}
         <div className={`connection-phase ${isError ? 'error' : ''}`}>{phase.label}</div>

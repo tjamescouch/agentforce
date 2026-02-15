@@ -47,7 +47,7 @@ export function TopBar({ state, dispatch, send, theme, setTheme }: TopBarProps) 
             <line x1="5.5" y1="2" x2="5.5" y2="14" stroke="currentColor" strokeWidth="1.2"/>
           </svg>
         </button>
-        <span className="logo">AgentForce</span>
+        <span className="logo">agentforce</span>
         <span className={`status ${state.connected ? 'online' : 'offline'}`}>
           {state.connected ? 'Connected' : 'Disconnected'}
         </span>
