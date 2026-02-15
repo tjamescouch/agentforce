@@ -191,7 +191,7 @@ export function MessageFeed({ state, dispatch, send }: MessageFeedProps) {
           placeholder="Type a message... (Shift+Enter for newline)"
           style={{ height: inputHeight }}
         />
-        <button type="submit">Send</button>
+
       </form>
     </div>
   );
