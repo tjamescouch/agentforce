@@ -79,6 +79,7 @@ export interface DashboardState {
   logs: LogEntry[];
   logsOpen: boolean;
   pulseOpen: boolean;
+  sendError: string | null;
   activity: ActivityStats;
 }
 
@@ -113,7 +114,9 @@ export type DashboardAction =
   | { type: 'CHANNELS_BULK_UPDATE'; data: Channel[] }
   | { type: 'SET_DASHBOARD_AGENT'; data: { agentId: string; nick: string; publicKey?: string; secretKey?: string } }
   | { type: 'NICK_CHANGED'; nick: string }
-  | { type: 'ACTIVITY'; data: ActivityStats };
+  | { type: 'ACTIVITY'; data: ActivityStats }
+  | { type: 'SEND_ERROR'; error: string }
+  | { type: 'CLEAR_SEND_ERROR' };
 
 export interface StateSyncPayload {
   agents: Agent[];
