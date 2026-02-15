@@ -3,8 +3,8 @@ import type { DashboardState, DashboardAction, Message } from './types';
 // ============ Persistence ============
 
 export const savedMode = typeof window !== 'undefined' ? localStorage.getItem('dashboardMode') || 'participate' : 'participate';
-export const savedNick = typeof window !== 'undefined' ? localStorage.getItem('dashboardNick') : null;
 export const savedSidebarOpen = typeof window !== 'undefined' ? localStorage.getItem('sidebarOpen') === 'true' : false;
+export const savedNick = typeof window !== 'undefined' ? localStorage.getItem('dashboardNick') : null;
 export const savedRightPanelOpen = typeof window !== 'undefined' ? (localStorage.getItem('rightPanelOpen') ?? 'true') === 'true' : true;
 
 const loadPersistedMessages = (): Record<string, Message[]> => {
