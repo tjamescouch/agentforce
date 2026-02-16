@@ -115,6 +115,8 @@ export type DashboardAction =
   | { type: 'SET_DASHBOARD_AGENT'; data: { agentId: string; nick: string; publicKey?: string; secretKey?: string } }
   | { type: 'NICK_CHANGED'; nick: string }
   | { type: 'ACTIVITY'; data: ActivityStats }
+  | { type: 'SHOW_LOCK' }
+  | { type: 'HIDE_LOCK' }
   | { type: 'TOGGLE_LOCK' };
 
 export interface StateSyncPayload {

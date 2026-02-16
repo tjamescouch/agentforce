@@ -176,7 +176,7 @@ export function Visage3DPanel({ agent, messages, modelUrl, onFallback }: Visage3
     onResize();
 
     // Load model
-    const url = modelUrl || defaultModelUrl;
+    const url = '/models/ellie_animation.glb';//modelUrl || defaultModelUrl;
     const loader = new GLTFLoader();
 
     loader.load(

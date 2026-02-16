@@ -8,7 +8,7 @@ interface LockScreenProps {
 
 export function LockScreen({ state, dispatch }: LockScreenProps) {
   const [time, setTime] = useState(new Date());
-  const [unlocking, setUnlocking] = useState(false);
+  const [locking, setLocking] = useState(false);
   const [dragY, setDragY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -19,24 +19,13 @@ export function LockScreen({ state, dispatch }: LockScreenProps) {
   }, []);
 
   // Unlock on click, Enter, or Space
-  const unlock = useCallback(() => {
-    setUnlocking(true);
+  const lock = useCallback(() => {
+    setLocking(true);
     setTimeout(() => {
-      dispatch({ type: 'TOGGLE_LOCK' });
-      setUnlocking(false);
+      dispatch({ type: 'SHOW_LOCK' });
+      setLocking(false);
     }, 500);
   }, [dispatch]);
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') {
-        e.preventDefault();
-        unlock();
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [unlock]);
 
   if (!state.lockScreen) return null;
 
@@ -55,8 +44,8 @@ export function LockScreen({ state, dispatch }: LockScreenProps) {
 
   return (
     <div
-      className={`lock-screen ${unlocking ? 'unlocking' : ''}`}
-      onClick={unlock}
+      className={`lock-screen ${locking ? 'locking' : ''}`}
+      onClick={lock}
       style={isDragging ? { transform: `translateY(${dragY}px)`, transition: 'none' } : undefined}
     >
       <div className="lock-screen-content">
@@ -71,7 +60,7 @@ export function LockScreen({ state, dispatch }: LockScreenProps) {
           <span className="lock-dot" />
           {agentCount} agent{agentCount !== 1 ? 's' : ''} online
         </div>
-        <div className="lock-hint">Click or press any key to unlock</div>
+        <div className="lock-hint">Click or press any key to lock</div>
       </div>
       <div className="lock-user">
         <div className="lock-avatar">

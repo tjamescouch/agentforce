@@ -180,6 +180,10 @@ export function reducer(state: DashboardState, action: DashboardAction): Dashboa
       return { ...state, logsOpen: !state.logsOpen };
     case 'CLEAR_LOGS':
       return { ...state, logs: [] };
+    case 'SHOW_LOCK':
+      return { ...state, lockScreen: true };
+    case 'HIDE_LOCK':
+      return { ...state, lockScreen: false };
     case 'TOGGLE_LOCK':
       return { ...state, lockScreen: !state.lockScreen };
     case 'TOGGLE_PULSE':
