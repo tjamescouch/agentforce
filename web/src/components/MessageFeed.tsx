@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, FormEvent } from 'react';
 import type { DashboardState, DashboardAction, WsSendFn, Message, Agent } from '../types';
-import { agentColor, formatTime, formatSize, renderMarkdown, isPatchMessage } from '../utils';
+import { agentColor, formatTime, formatSize, renderMarkdown, isPatchMessage, displayName } from '../utils';
 import { FileOfferBanner } from './FileOfferBanner';
 import { TransferBar } from './TransferBar';
 import { DiffViewer } from './DiffViewer';
