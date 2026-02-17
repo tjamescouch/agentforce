@@ -81,6 +81,7 @@ export interface DashboardState {
   logsOpen: boolean;
   pulseOpen: boolean;
   lockScreen: boolean;
+  sendError: string | null;
   activity: ActivityStats;
 }
 
@@ -118,7 +119,9 @@ export type DashboardAction =
   | { type: 'ACTIVITY'; data: ActivityStats }
   | { type: 'SHOW_LOCK' }
   | { type: 'HIDE_LOCK' }
-  | { type: 'TOGGLE_LOCK' };
+  | { type: 'TOGGLE_LOCK' }
+  | { type: 'SEND_ERROR'; error: string }
+  | { type: 'CLEAR_SEND_ERROR' };
 
 export interface StateSyncPayload {
   agents: Agent[];

@@ -1,71 +1,90 @@
-# AgentChat Dashboard
+# AgentForce
 
-Real-time web dashboard for monitoring and interacting with an AgentChat server. Shows connected agents, channels, messages, leaderboard, skills marketplace, and lets humans observe or participate in agent conversations.
+Real-time web dashboard for monitoring and interacting with an AgentChat server. Shows connected agents, channels, messages, and lets humans observe or participate in agent conversations. Features a macOS-inspired glassmorphism UI.
 
 ## Components
 
-- [server](server.md) - Node.js backend that connects to AgentChat as an observer
-- [web](web.md) - Single-page React frontend with terminal aesthetic
-- [bridge](bridge.md) - WebSocket bridge between dashboard clients and AgentChat server
+- [server](server.md) - Node.js backend that proxies browser clients to AgentChat
+- [web](web.md) - Single-page React/TypeScript frontend with glass UI
+- [bridge](bridge.md) - WebSocket bridge protocol between dashboard clients and AgentChat server
 - [state](state.md) - Shared state management and data models
 
 ## Directory Structure
 
 ```
-agentchat-dashboard/
+agentforce/
 ├── owl/                    # Owl specs (this directory)
 ├── server/
-│   ├── index.js           # Main server entry
-│   ├── agentchat.js       # AgentChat client connection
-│   ├── bridge.js          # WebSocket bridge
-│   └── state.js           # Server-side state management
-├── web/
-│   ├── public/
-│   │   └── index.html
 │   └── src/
-│       ├── App.jsx
+│       └── index.ts       # Main server entry (bridge + HTTP + AgentChat proxy)
+├── web/
+│   ├── index.html
+│   └── src/
+│       ├── App.tsx
 │       ├── components/
-│       │   ├── Sidebar.jsx
-│       │   ├── MessageFeed.jsx
-│       │   ├── AgentDetail.jsx
-│       │   ├── Leaderboard.jsx
-│       │   ├── SkillsMarket.jsx
-│       │   └── TopBar.jsx
+│       │   ├── ConnectionOverlay.tsx
+│       │   ├── LoginScreen.tsx
+│       │   ├── TopBar.tsx
+│       │   ├── Sidebar.tsx
+│       │   ├── MessageFeed.tsx
+│       │   ├── RightPanel.tsx
+│       │   ├── NetworkPulse.tsx
+│       │   ├── LogsPanel.tsx
+│       │   ├── DropZone.tsx
+│       │   ├── SendFileModal.tsx
+│       │   ├── SaveModal.tsx
+│       │   ├── FileOfferBanner.tsx
+│       │   ├── TransferBar.tsx
+│       │   └── VisagePanel.tsx
 │       ├── hooks/
-│       │   └── useWebSocket.js
-│       └── styles/
-│           └── terminal.css
+│       │   ├── useWebSocket.ts
+│       │   ├── useResizable.ts
+│       │   ├── useTheme.ts
+│       │   └── useEmotionStream.ts
+│       ├── reducer.ts
+│       ├── context.ts
+│       ├── types.ts
+│       ├── utils.ts
+│       ├── styles.css
+│       └── main.tsx
+├── bin/                    # CLI scripts
 ├── package.json
+├── Dockerfile
+├── fly.toml
 └── README.md
 ```
 
 ## Constraints
 
-- Connects to any AgentChat server (default: ws://localhost:6667)
+- Connects to any AgentChat server (default: ws://localhost:6667, or env AGENTCHAT_URL)
 - Must not interfere with agent-to-agent communication
 - Dashboard user can lurk (read-only) or join as a participant
-- All state is ephemeral, no database required
+- All state is ephemeral, no database required (messages cached in localStorage)
 - Single `npm start` to run everything (server + bundled frontend)
 - Must work on localhost:3000
-- Terminal aesthetic: dark theme, monospace, green-on-black
+- macOS-inspired glass UI with light/dark/system themes
+- Login screen gates access — user enters name before connecting
 
 ## Features
 
 ### Core
 
+- Login screen with name input and persistent identity (Ed25519 keys in localStorage)
 - Real-time message display across all channels
 - Agent presence tracking (online/offline)
 - Channel discovery and navigation
-- Direct message viewing
+- File transfer (drag & drop)
+- Typing indicators
 
-### Advanced
+### UI
 
-- Leaderboard with ELO ratings and trends
-- Skills marketplace browser
-- Proposal tracking (PROPOSE/ACCEPT/REJECT/COMPLETE/DISPUTE)
-- Agent detail panel with history
+- Glassmorphism design (translucent backgrounds, backdrop blur)
+- Resizable sidebar, right panel, and logs panel (all collapsible)
+- Light/dark/system theme support
+- Network pulse visualization
+- Connection overlay with progress steps
 
 ### Modes
 
 - **Lurk mode**: Read-only observation, dashboard agent hidden
-- **Participate mode**: Send messages, visible to other agents
+- **Participate mode**: Send messages (Enter key), visible to other agents

@@ -1,4 +1,4 @@
-import { useReducer } from 'react';
+import { useState, useReducer, useCallback } from 'react';
 import { DashboardContext } from './context';
 import { reducer, initialState } from './reducer';
 import { useWebSocket } from './hooks/useWebSocket';
@@ -15,14 +15,29 @@ import { SendFileModal } from './components/SendFileModal';
 import { SaveModal } from './components/SaveModal';
 import { ConnectionOverlay } from './components/ConnectionOverlay';
 import { LockScreen } from './components/LockScreen';
+import { LoginScreen } from './components/LoginScreen';
+
+function hasStoredIdentity(): boolean {
+  return !!(localStorage.getItem('dashboardNick'));
+}
 
 export default function App() {
+  const [loggedIn, setLoggedIn] = useState(hasStoredIdentity);
   const [state, dispatch] = useReducer(reducer, initialState);
-  const send = useWebSocket(dispatch);
+  const send = useWebSocket(dispatch, loggedIn);
   const sidebar = useResizable(220, 160, 400, 'left');
   const rightPanel = useResizable(280, 200, 500, 'right');
   const logsPanel = useResizable(200, 80, 500, 'bottom');
   const [theme, setTheme] = useTheme();
+
+  const handleLogin = useCallback((name: string) => {
+    localStorage.setItem('dashboardNick', name);
+    setLoggedIn(true);
+  }, []);
+
+  if (!loggedIn) {
+    return <LoginScreen onLogin={handleLogin} />;
+  }
 
   return (
     <DashboardContext.Provider value={{ state, dispatch, send }}>

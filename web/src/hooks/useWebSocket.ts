@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import type { DashboardAction, WsSendFn } from '../types';
 
-export function useWebSocket(dispatch: React.Dispatch<DashboardAction>): WsSendFn {
+export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled: boolean = true): WsSendFn {
   const ws = useRef<WebSocket | null>(null);
   const [send, setSend] = useState<WsSendFn>(() => () => {});
 
   useEffect(() => {
+    if (!enabled) return;
+
     const wsUrl = import.meta.env.DEV
       ? 'ws://localhost:3000/ws'
       : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
@@ -151,6 +153,10 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>): WsSendF
             if (msg.data?.code === 'NOT_ALLOWED') {
               dispatch({ type: 'CONNECTION_ERROR', error: msg.data?.message || 'Connection rejected by server' });
             }
+            // Surface send-related errors to the UI
+            if (msg.data?.code === 'RATE_LIMITED' || msg.data?.code === 'NO_SESSION' || msg.data?.code === 'LURK_MODE' || msg.data?.code === 'INVALID_MESSAGE') {
+              dispatch({ type: 'SEND_ERROR', error: msg.data?.message || msg.data?.code || 'Send failed' });
+            }
             break;
         }
       };
@@ -174,7 +180,7 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>): WsSendF
 
     connect();
     return () => ws.current?.close();
-  }, [dispatch]);
+  }, [dispatch, enabled]);
 
   return send;
 }

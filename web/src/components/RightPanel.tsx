@@ -1,6 +1,6 @@
 import { useState, FormEvent, lazy, Suspense } from 'react';
 import type { DashboardState, DashboardAction, WsSendFn } from '../types';
-import { agentColor, formatMsgRate } from '../utils';
+import { agentColor, formatMsgRate, displayName, shortId } from '../utils';
 import { VisagePanel } from './VisagePanel';
 
 const Visage3DPanel = lazy(() =>
@@ -77,11 +77,11 @@ export function RightPanel({ state, dispatch, send, panelWidth }: RightPanelProp
         ) : (
           <div
             className="detail-nick clickable"
-            style={{ color: agentColor(agent.nick || agent.id) }}
+            style={{ color: agentColor(displayName(agent.id, agent.nick)) }}
             onClick={() => { setIsRenaming(true); setRenameValue(agent.nick || ''); }}
             title="Click to rename"
           >
-            {agent.nick || agent.id}
+            {displayName(agent.id, agent.nick)}
           </div>
         )}
         <div className="detail-id">
