@@ -11,6 +11,86 @@ export function renderMarkdown(content: string): string {
   return DOMPurify.sanitize(html);
 }
 
+// ============ Patch / Diff Parsing ============
+
+export type DiffLineType = 'add' | 'remove' | 'context' | 'hunk' | 'header';
+
+export interface DiffLine {
+  type: DiffLineType;
+  content: string;
+  oldNum?: number;
+  newNum?: number;
+}
+
+export type FileOp = 'Add' | 'Modify' | 'Delete';
+
+export interface DiffFile {
+  op: FileOp;
+  path: string;
+  lines: DiffLine[];
+}
+
+export function isPatchMessage(content: string): boolean {
+  return /\*{3} (Add|Modify|Delete) File:/.test(content);
+}
+
+export function parsePatch(content: string): DiffFile[] {
+  // Strip surrounding code fence if present
+  const inner = content.replace(/^```[^\n]*\n?/, '').replace(/\n?```\s*$/, '');
+
+  const files: DiffFile[] = [];
+  // Split on *** {Op} File: lines
+  const sections = inner.split(/(?=\*{3} (?:Add|Modify|Delete) File:)/);
+
+  for (const section of sections) {
+    const trimmed = section.trim();
+    if (!trimmed) continue;
+
+    const headerMatch = trimmed.match(/^\*{3} (Add|Modify|Delete) File:\s*(.+)/);
+    if (!headerMatch) continue;
+
+    const op = headerMatch[1] as FileOp;
+    const path = headerMatch[2].trim();
+    const rest = trimmed.slice(headerMatch[0].length).split('\n');
+
+    const lines: DiffLine[] = [];
+    let oldNum = 0;
+    let newNum = 0;
+
+    for (const raw of rest) {
+      if (raw.startsWith('@@ ')) {
+        // Parse hunk header for line numbers: @@ -oldStart,count +newStart,count @@
+        const m = raw.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+        if (m) {
+          oldNum = parseInt(m[1], 10) - 1;
+          newNum = parseInt(m[2], 10) - 1;
+        }
+        lines.push({ type: 'hunk', content: raw });
+      } else if (raw.startsWith('+') && !raw.startsWith('+++')) {
+        newNum++;
+        lines.push({ type: 'add', content: raw.slice(1), newNum });
+      } else if (raw.startsWith('-') && !raw.startsWith('---')) {
+        oldNum++;
+        lines.push({ type: 'remove', content: raw.slice(1), oldNum });
+      } else if (raw.startsWith(' ')) {
+        oldNum++;
+        newNum++;
+        lines.push({ type: 'context', content: raw.slice(1), oldNum, newNum });
+      } else if (raw.startsWith('---') || raw.startsWith('+++')) {
+        // skip unified diff file headers
+      } else if (raw.trim()) {
+        // Add File content: lines have no prefix — treat as additions
+        newNum++;
+        lines.push({ type: 'add', content: raw, newNum });
+      }
+    }
+
+    files.push({ op, path, lines });
+  }
+
+  return files;
+}
+
 // ============ Helpers ============
 
 export function agentColor(nick: string): string {
