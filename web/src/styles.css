@@ -532,10 +532,44 @@ body {
   -webkit-user-select: text;
   line-height: 1.5;
   transition: background 0.1s ease;
+  position: relative;
 }
 
 .message:hover {
   background: var(--bg-tertiary);
+}
+
+.message:hover .msg-copy-btn {
+  opacity: 1;
+}
+
+.msg-copy-btn {
+  opacity: 0;
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1px 7px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+  line-height: 1.6;
+}
+
+.msg-copy-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.msg-copy-btn.copied {
+  color: var(--accent-green);
+  border-color: var(--accent-green);
+  opacity: 1;
 }
 
 @keyframes fadeIn {

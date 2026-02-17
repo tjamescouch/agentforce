@@ -1,9 +1,74 @@
 import { useState, useEffect, useRef, useCallback, FormEvent } from 'react';
-import type { DashboardState, DashboardAction, WsSendFn } from '../types';
+import type { DashboardState, DashboardAction, WsSendFn, Message, Agent } from '../types';
 import { agentColor, formatTime, formatSize, renderMarkdown, isPatchMessage } from '../utils';
 import { FileOfferBanner } from './FileOfferBanner';
 import { TransferBar } from './TransferBar';
 import { DiffViewer } from './DiffViewer';
+
+// ---- MessageRow ----
+
+interface MessageRowProps {
+  msg: Message;
+  agents: Record<string, Agent>;
+  fileData: { _file: true; transferId: string; files: { name: string; size: number }[]; totalSize: number } | null;
+}
+
+function MessageRow({ msg, agents, fileData }: MessageRowProps) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(msg.content).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
+  return (
+    <div className="message">
+      <span className="time">[{formatTime(msg.ts)}]</span>
+      <span className="from" style={{ color: agentColor(agents[msg.from]?.nick || msg.fromNick || msg.from) }}>
+        &lt;{agents[msg.from]?.nick || msg.fromNick || msg.from}&gt;
+      </span>
+      <span className="agent-id">{msg.from}</span>
+      {agents[msg.from]?.verified
+        ? <span className="verified-badge">&#x2713;</span>
+        : agents[msg.from] && <span className="unverified-badge">&#x26A0;</span>
+      }
+      {fileData ? (
+        <span className="file-bubble">
+          <span className="file-icon">&#x1F4CE;</span>
+          <span className="file-bubble-info">
+            {fileData.files.map((f, fi) => (
+              <a
+                key={fi}
+                className="file-bubble-link"
+                href={`/api/download/${fileData!.transferId}/${fi}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {f.name}
+              </a>
+            ))}
+            <span className="file-bubble-size">({formatSize(fileData.totalSize)})</span>
+          </span>
+        </span>
+      ) : isPatchMessage(msg.content) ? (
+        <DiffViewer content={msg.content} />
+      ) : (
+        <span className="content" dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
+      )}
+      <button
+        className={`msg-copy-btn${copied ? ' copied' : ''}`}
+        onClick={handleCopy}
+        title="Copy message"
+        aria-label="Copy message"
+      >
+        {copied ? '✓' : '⎘'}
+      </button>
+    </div>
+  );
+}
 
 interface MessageFeedProps {
   state: DashboardState;
@@ -125,41 +190,12 @@ export function MessageFeed({ state, dispatch, send }: MessageFeedProps) {
           } catch { /* not JSON */ }
 
           return (
-            <div key={msg.id || i} className="message">
-              <span className="time">[{formatTime(msg.ts)}]</span>
-              <span className="from" style={{ color: agentColor(state.agents[msg.from]?.nick || msg.fromNick || msg.from) }}>
-                &lt;{state.agents[msg.from]?.nick || msg.fromNick || msg.from}&gt;
-              </span>
-              <span className="agent-id">{msg.from}</span>
-              {state.agents[msg.from]?.verified
-                ? <span className="verified-badge">&#x2713;</span>
-                : state.agents[msg.from] && <span className="unverified-badge">&#x26A0;</span>
-              }
-              {fileData ? (
-                <span className="file-bubble">
-                  <span className="file-icon">&#x1F4CE;</span>
-                  <span className="file-bubble-info">
-                    {fileData.files.map((f, fi) => (
-                      <a
-                        key={fi}
-                        className="file-bubble-link"
-                        href={`/api/download/${fileData!.transferId}/${fi}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {f.name}
-                      </a>
-                    ))}
-                    <span className="file-bubble-size">({formatSize(fileData.totalSize)})</span>
-                  </span>
-                </span>
-              ) : isPatchMessage(msg.content) ? (
-                <DiffViewer content={msg.content} />
-              ) : (
-                <span className="content" dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
-              )}
-            </div>
+            <MessageRow
+              key={msg.id || i}
+              msg={msg}
+              agents={state.agents}
+              fileData={fileData}
+            />
           );
         })}
         <div ref={messagesEndRef} />
