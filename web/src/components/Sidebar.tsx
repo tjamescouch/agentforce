@@ -35,8 +35,15 @@ export function Sidebar({ state, dispatch, sidebarWidth }: SidebarProps) {
             >
               <span className={`dot ${agent.online ? 'online' : 'offline'}`} />
               <span className="agent-type-icon" title={agent.isDashboard ? 'Dashboard user' : 'Agent'}>{agent.isDashboard ? '\uD83E\uDDD1' : '\uD83E\uDD16'}</span>
-              <span className="nick" style={{ color: agentColor(agent.nick || agent.id) }}>
-                {getDisplayName(agent)}
+              <span className="agent-name-block">
+                <span className="nick" style={{ color: agentColor(agent.nick || agent.id) }}>
+                  {getDisplayName(agent)}
+                </span>
+                {agent.status_text && (
+                  <span className="agent-status-text" title={agent.status_text}>
+                    {agent.status_text}
+                  </span>
+                )}
               </span>
               {agent.verified
                 ? <span className="verified-badge" title="Verified (allowlisted)">&#x2713;</span>
