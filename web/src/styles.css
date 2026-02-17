@@ -383,6 +383,44 @@ body {
 }
 
 
+.sidebar-handle.collapsed-edge {
+  width: 6px;
+  min-width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+  flex-shrink: 0;
+  z-index: 20;
+  transition: background 0.2s;
+}
+
+.sidebar-handle.collapsed-edge::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 1px;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 32px;
+  border-radius: 2px;
+  background: var(--border);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.sidebar-handle.collapsed-edge:hover::after {
+  opacity: 0.7;
+}
+
+.sidebar-handle.collapsed-edge:hover {
+  background: var(--bg-tertiary);
+}
+
+.sidebar-handle.collapsed-edge.active::after {
+  opacity: 1;
+  background: var(--accent-blue);
+}
+
 .resize-handle {
   width: 10px;
   cursor: col-resize;
