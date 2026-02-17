@@ -22,7 +22,7 @@ export interface DiffLine {
   newNum?: number;
 }
 
-export type FileOp = 'Add' | 'Modify' | 'Delete';
+export type FileOp = 'Add' | 'Modify' | 'Update' | 'Delete';
 
 export interface DiffFile {
   op: FileOp;
@@ -31,22 +31,25 @@ export interface DiffFile {
 }
 
 export function isPatchMessage(content: string): boolean {
-  return /\*{3} (Add|Modify|Delete) File:/.test(content);
+  return /\*{3} (Add|Modify|Update|Delete) File:/.test(content)
+    || /\*{3} Begin Patch/.test(content);
 }
 
 export function parsePatch(content: string): DiffFile[] {
   // Strip surrounding code fence if present
-  const inner = content.replace(/^```[^\n]*\n?/, '').replace(/\n?```\s*$/, '');
+  let inner = content.replace(/^```[^\n]*\n?/, '').replace(/\n?```\s*$/, '');
+  // Strip *** Begin Patch / *** End Patch wrappers
+  inner = inner.replace(/^\*{3} Begin Patch\s*\n?/, '').replace(/\n?\*{3} End Patch\s*$/, '');
 
   const files: DiffFile[] = [];
-  // Split on *** {Op} File: lines
-  const sections = inner.split(/(?=\*{3} (?:Add|Modify|Delete) File:)/);
+  // Split on *** {Op} File: lines (including Update)
+  const sections = inner.split(/(?=\*{3} (?:Add|Modify|Update|Delete) File:)/);
 
   for (const section of sections) {
     const trimmed = section.trim();
     if (!trimmed) continue;
 
-    const headerMatch = trimmed.match(/^\*{3} (Add|Modify|Delete) File:\s*(.+)/);
+    const headerMatch = trimmed.match(/^\*{3} (Add|Modify|Update|Delete) File:\s*(.+)/);
     if (!headerMatch) continue;
 
     const op = headerMatch[1] as FileOp;
@@ -58,9 +61,9 @@ export function parsePatch(content: string): DiffFile[] {
     let newNum = 0;
 
     for (const raw of rest) {
-      if (raw.startsWith('@@ ')) {
-        // Parse hunk header for line numbers: @@ -oldStart,count +newStart,count @@
-        const m = raw.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      // Match both @@ and @@@ hunk headers
+      if (/^@{2,}/.test(raw)) {
+        const m = raw.match(/@{2,} -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @{2,}/);
         if (m) {
           oldNum = parseInt(m[1], 10) - 1;
           newNum = parseInt(m[2], 10) - 1;
