@@ -95,6 +95,7 @@ interface AgentState {
   lastSeen: number;
   online: boolean;
   presence?: string;
+  status_text?: string;
   verified: boolean;
   isDashboard: boolean;
 }
@@ -150,6 +151,8 @@ interface AgentChatMsg {
   message?: string;
   sig?: string;
   verified?: boolean;
+  presence?: string;
+  status_text?: string | null;
 }
 
 interface DashboardMessage {
@@ -745,6 +748,20 @@ function handleAgentChatMessage(msg: AgentChatMsg): void {
         broadcastToDashboards({
           type: 'agent_update',
           data: { ...leaving, channels: [...leaving.channels], event: 'left' }
+        });
+      }
+      break;
+    }
+
+    case 'PRESENCE_CHANGED': {
+      const presenceAgentId = msg.agent_id?.replace(/^@/, '');
+      if (presenceAgentId && state.agents.has(presenceAgentId)) {
+        const agent = state.agents.get(presenceAgentId)!;
+        if (msg.presence) agent.presence = msg.presence;
+        if (msg.status_text !== undefined) agent.status_text = msg.status_text ?? undefined;
+        broadcastToDashboards({
+          type: 'agent_update',
+          data: { ...agent, channels: [...agent.channels], event: 'presence' }
         });
       }
       break;

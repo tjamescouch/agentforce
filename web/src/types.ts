@@ -7,6 +7,7 @@ export interface Agent {
   lastSeen: number;
   online: boolean;
   presence?: string;
+  status_text?: string;
   event?: string;
   verified?: boolean;
   isDashboard?: boolean;
