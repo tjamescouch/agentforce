@@ -36,8 +36,9 @@ export function isPatchMessage(content: string): boolean {
 }
 
 export function parsePatch(content: string): DiffFile[] {
-  // Strip surrounding code fence if present
-  let inner = content.replace(/^```[^\n]*\n?/, '').replace(/\n?```\s*$/, '');
+  // Extract content from code fence (handles preamble text like "patched files\n```\n...")
+  const fenceMatch = content.match(/```[^\n]*\n([\s\S]*?)```/);
+  let inner = fenceMatch ? fenceMatch[1] : content.replace(/^```[^\n]*\n?/, '').replace(/\n?```\s*$/, '');
   // Strip *** Begin Patch / *** End Patch wrappers
   inner = inner.replace(/^\*{3} Begin Patch\s*\n?/, '').replace(/\n?\*{3} End Patch\s*$/, '');
 
