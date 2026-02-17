@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback, FormEvent } from 'react';
 import type { DashboardState, DashboardAction, WsSendFn } from '../types';
-import { agentColor, formatTime, formatSize, renderMarkdown } from '../utils';
+import { agentColor, formatTime, formatSize, renderMarkdown, isPatchMessage } from '../utils';
 import { FileOfferBanner } from './FileOfferBanner';
 import { TransferBar } from './TransferBar';
+import { DiffViewer } from './DiffViewer';
 
 interface MessageFeedProps {
   state: DashboardState;
@@ -153,6 +154,8 @@ export function MessageFeed({ state, dispatch, send }: MessageFeedProps) {
                     <span className="file-bubble-size">({formatSize(fileData.totalSize)})</span>
                   </span>
                 </span>
+              ) : isPatchMessage(msg.content) ? (
+                <DiffViewer content={msg.content} />
               ) : (
                 <span className="content" dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
               )}
