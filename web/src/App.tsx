@@ -25,7 +25,11 @@ export default function App() {
   const [loggedIn, setLoggedIn] = useState(hasStoredIdentity);
   const [state, dispatch] = useReducer(reducer, initialState);
   const send = useWebSocket(dispatch, loggedIn);
-  const sidebar = useResizable(220, 160, 400, 'left');
+  const sidebar = useResizable(220, 160, 400, 'left', {
+    collapsible: true,
+    collapseThreshold: 60,
+    storageKey: 'sidebar',
+  });
   const rightPanel = useResizable(280, 200, 500, 'right');
   const logsPanel = useResizable(200, 80, 500, 'bottom');
   const [theme, setTheme] = useTheme();
@@ -45,12 +49,14 @@ export default function App() {
         <TopBar state={state} dispatch={dispatch} send={send} theme={theme} setTheme={setTheme} />
         <div className="content-area">
           <div className="main">
-            {state.sidebarOpen && (
-              <>
-                <Sidebar state={state} dispatch={dispatch} sidebarWidth={sidebar.width} />
-                <div className="resize-handle" ref={sidebar.handleRef} onMouseDown={sidebar.onMouseDown} />
-              </>
+            {!sidebar.collapsed && (
+              <Sidebar state={state} dispatch={dispatch} sidebarWidth={sidebar.width} />
             )}
+            <div
+              className={`resize-handle sidebar-handle ${sidebar.collapsed ? 'collapsed-edge' : ''}`}
+              ref={sidebar.handleRef}
+              onMouseDown={sidebar.onMouseDown}
+            />
             {state.pulseOpen ? (
               <NetworkPulse state={state} dispatch={dispatch} />
             ) : (
