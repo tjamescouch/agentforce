@@ -62,6 +62,11 @@ export class MongoFileStore implements FileStore {
     this.connected = false;
   }
 
+  /** Alias for disconnect — implements FileStore.close() */
+  async close(): Promise<void> {
+    return this.disconnect();
+  }
+
   private ensureConnected(): void {
     if (!this.connected) {
       throw new Error('MongoFileStore not connected. Call connect() first.');
@@ -82,21 +87,22 @@ export class MongoFileStore implements FileStore {
   async put(key: string, data: Buffer, metadata?: Partial<FileMetadata>): Promise<void> {
     this.ensureConnected();
     const now = new Date();
-    const existing = await this.collection.findOne({ _id: key }, { projection: { 'metadata.createdAt': 1 } });
-
-    const doc: FileDocument = {
-      _id: key,
-      data: new Binary(data),
-      metadata: {
-        contentType: metadata?.contentType ?? 'application/octet-stream',
-        size: data.length,
-        createdAt: existing?.metadata?.createdAt ?? now,
-        updatedAt: now,
-        ...metadata,
-      },
+    const metaFields = {
+      contentType: metadata?.contentType ?? 'application/octet-stream',
+      size: data.length,
+      updatedAt: now,
+      ...metadata,
     };
 
-    await this.collection.replaceOne({ _id: key }, doc, { upsert: true });
+    // Atomic upsert: $setOnInsert preserves createdAt on overwrites, single round trip
+    await this.collection.updateOne(
+      { _id: key },
+      {
+        $set: { data: new Binary(data), metadata: { ...metaFields } },
+        $setOnInsert: { 'metadata.createdAt': now },
+      } as any,
+      { upsert: true },
+    );
   }
 
   async delete(key: string): Promise<void> {

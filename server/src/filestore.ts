@@ -47,12 +47,19 @@ export interface FileStore {
 
   /** Get just the metadata without the data payload. */
   head(key: string): Promise<FileMetadata | null>;
+
+  /** Close the store and release resources. Optional — no-op for stores that don't need it. */
+  close?(): Promise<void>;
 }
 
 // ============ In-Memory Implementation (dev/testing) ============
 
 export class MemoryFileStore implements FileStore {
   private store = new Map<string, FileEntry>();
+
+  async close(): Promise<void> {
+    this.store.clear();
+  }
 
   async get(key: string): Promise<FileEntry | null> {
     return this.store.get(key) ?? null;
