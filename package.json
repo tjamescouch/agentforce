@@ -1,6 +1,6 @@
 {
   "name": "agentforce",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Enterprise dashboard for AgentChat - chat, channels, agents, file transfer, network graph",
   "scripts": {
     "start": "cd server && npm start",
