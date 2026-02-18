@@ -154,9 +154,10 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled:
             if (msg.data?.code === 'NOT_ALLOWED') {
               dispatch({ type: 'CONNECTION_ERROR', error: msg.data?.message || 'Connection rejected by server' });
             }
-            // Surface send-related errors to the UI
+            // Surface send-related errors to the UI (auto-clear after 5s)
             if (msg.data?.code === 'RATE_LIMITED' || msg.data?.code === 'NO_SESSION' || msg.data?.code === 'LURK_MODE' || msg.data?.code === 'INVALID_MESSAGE') {
               dispatch({ type: 'SEND_ERROR', error: msg.data?.message || msg.data?.code || 'Send failed' });
+              setTimeout(() => dispatch({ type: 'CLEAR_SEND_ERROR' }), 5000);
             }
             break;
         }

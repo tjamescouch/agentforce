@@ -144,27 +144,9 @@ export function reducer(state: DashboardState, action: DashboardAction): Dashboa
       return { ...state, messages: newMessages, unreadCounts: newUnread };
     }
     case 'AGENT_UPDATE': {
-      const prev = state.agents[action.data.id];
-      const prevChannels = new Set(prev?.channels || []);
-      const newChannels = new Set(action.data.channels || []);
-      const newActivity = { ...state.activityCounts };
-      if (action.data.event === 'joined') {
-        for (const ch of newChannels) {
-          if (!prevChannels.has(ch) && ch !== state.selectedChannel) {
-            newActivity[ch] = (newActivity[ch] || 0) + 1;
-          }
-        }
-      } else if (action.data.event === 'left') {
-        for (const ch of prevChannels) {
-          if (!newChannels.has(ch) && ch !== state.selectedChannel) {
-            newActivity[ch] = (newActivity[ch] || 0) + 1;
-          }
-        }
-      }
       return {
         ...state,
         agents: { ...state.agents, [action.data.id]: action.data },
-        activityCounts: newActivity
       };
     }
     case 'SET_MODE':

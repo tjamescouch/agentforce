@@ -203,6 +203,7 @@ export function MessageFeed({ state, dispatch, send }: MessageFeedProps) {
     send({ type: 'send_message', data: { to: state.selectedChannel, content: input } });
     setInput('');
     setSendError(null);
+    dispatch({ type: 'CLEAR_SEND_ERROR' });
     setIsAtBottom(true);
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
