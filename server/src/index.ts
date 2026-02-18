@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Request, Response, NextFunction, Router } from 'express';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
@@ -8,6 +8,8 @@ import crypto from 'crypto';
 import multer from 'multer';
 import nacl from 'tweetnacl';
 import tweetnaclUtil from 'tweetnacl-util';
+import { createFileStore } from './filestore-factory.js';
+import { createFileStoreRoutes } from './filestore-routes.js';
 import { autoDetectProvider } from './llm/index.js';
 import { createLLMRoutes } from './llm-routes.js';
 import { apiAuth } from './api-auth.js';
@@ -1711,6 +1713,24 @@ app.use('/api/llm', (req: Request, res: Response, next: NextFunction) => {
     llmRouterReady = true;
   }
 })();
+
+// FileStore REST API (lazy-initialized)
+let fileStoreRouter: Router | null = null;
+createFileStore()
+  .then(store => {
+    fileStoreRouter = createFileStoreRoutes(store) as unknown as Router;
+    console.log('[filestore] REST API ready at /api/files');
+  })
+  .catch(err => {
+    console.error('[filestore] Failed to initialize:', err);
+  });
+
+app.use('/api/files', apiAuth, (req: Request, res: Response, next: NextFunction) => {
+  if (!fileStoreRouter) {
+    return res.status(503).json({ error: 'FileStore initializing, try again shortly' });
+  }
+  fileStoreRouter(req, res, next);
+});
 
 // Static files (for built React app)
 app.use(express.static('public'));
