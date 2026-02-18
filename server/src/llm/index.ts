@@ -1,16 +1,20 @@
 /**
  * LLM Provider factory.
  *
- * Creates an LLM provider from config or env vars.
- * Supports async key resolution from macOS Keychain, files, or env vars.
+ * Creates an LLM provider from config or auto-detected credentials.
+ * Supports:
+ *   1. agentauth proxy (preferred — agent never sees keys)
+ *   2. macOS Keychain (direct mode for local dev)
+ *   3. File-based secrets
+ *   4. Env var fallback (with warning)
  */
 
 export type { LLMProvider, LLMCompletionRequest, LLMCompletionResponse, LLMStreamChunk, LLMMessage, LLMProviderConfig } from './types.js';
 export { OpenAICompatibleProvider, OpenAICompatibleProvider as GroqProvider } from './groq.js';
 
-import type { LLMProvider, LLMProviderConfig } from './types.js';  
+import type { LLMProvider, LLMProviderConfig } from './types.js';
 import { OpenAICompatibleProvider } from './groq.js';
-import { resolveSecret } from '../secrets.js';
+import { resolveSecret, checkAgentAuth } from '../secrets.js';
 
 /**
  * Create an LLM provider from explicit config.
@@ -31,7 +35,7 @@ export async function createLLMProvider(config: LLMProviderConfig): Promise<LLMP
     case 'ollama':
       return new OpenAICompatibleProvider({
         name: 'ollama',
-        apiKey: 'ollama', // Ollama doesn't check the key but we need a non-empty string
+        apiKey: 'ollama',
         baseUrl: config.baseUrl || 'http://localhost:11434/v1',
         defaultModel: config.defaultModel || 'llama3.1:8b',
       });
@@ -62,29 +66,50 @@ export async function createLLMProvider(config: LLMProviderConfig): Promise<LLMP
 }
 
 /**
- * Auto-detect and create a provider from available secrets.
- * Priority: GROQ_API_KEY > OPENAI_API_KEY > XAI_API_KEY > Ollama (localhost)
+ * Provider detection config — maps agentauth backend names to provider configs.
+ */
+const PROXY_BACKENDS: Array<{
+  backend: string;
+  provider: LLMProviderConfig['provider'];
+  defaultModel: string;
+  secretName: string;
+}> = [
+  { backend: 'groq', provider: 'groq', defaultModel: 'llama-3.1-70b-versatile', secretName: 'GROQ_API_KEY' },
+  { backend: 'openai', provider: 'openai', defaultModel: 'gpt-4o-mini', secretName: 'OPENAI_API_KEY' },
+  { backend: 'xai', provider: 'xai', defaultModel: 'grok-2', secretName: 'XAI_API_KEY' },
+];
+
+/**
+ * Auto-detect and create a provider.
+ *
+ * Detection order:
+ * 1. Check agentauth proxy for each backend (groq → openai → xai)
+ * 2. Check keychain/file/env for each key
  *
  * Returns null if no provider is configured.
  */
 export async function autoDetectProvider(): Promise<LLMProvider | null> {
-  // Check each key source (keychain → file → env) in priority order
-  const groqKey = await resolveSecret('GROQ_API_KEY', { silent: true });
-  if (groqKey) {
-    return createLLMProvider({ provider: 'groq', apiKey: groqKey });
+  // 1. Check agentauth proxy for configured backends
+  for (const { backend, provider, defaultModel } of PROXY_BACKENDS) {
+    const proxyBase = await checkAgentAuth(backend);
+    if (proxyBase) {
+      console.log(`[llm] Using agentauth proxy for ${backend} (${proxyBase})`);
+      return new OpenAICompatibleProvider({
+        name: provider,
+        apiKey: 'proxy-managed', // Proxy injects the real key
+        baseUrl: proxyBase,
+        defaultModel,
+      });
+    }
   }
 
-  const openaiKey = await resolveSecret('OPENAI_API_KEY', { silent: true });
-  if (openaiKey) {
-    return createLLMProvider({ provider: 'openai', apiKey: openaiKey });
+  // 2. Direct mode — resolve keys from keychain/file/env
+  for (const { provider, secretName, defaultModel } of PROXY_BACKENDS) {
+    const key = await resolveSecret(secretName, { silent: true });
+    if (key) {
+      return createLLMProvider({ provider, apiKey: key, defaultModel });
+    }
   }
 
-  const xaiKey = await resolveSecret('XAI_API_KEY', { silent: true });
-  if (xaiKey) {
-    return createLLMProvider({ provider: 'xai', apiKey: xaiKey });
-  }
-
-  // Could auto-detect Ollama here by pinging localhost:11434
-  // but that's slow and unreliable. Require explicit config.
   return null;
 }
