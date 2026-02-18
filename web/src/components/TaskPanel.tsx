@@ -9,7 +9,7 @@ interface TaskPanelProps {
 }
 
 function generateId(): string {
-  return `task_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  return crypto.randomUUID();
 }
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
@@ -105,6 +105,20 @@ function TaskEditor({
     content !== task.content ||
     status !== task.status ||
     (assignee.trim() || '') !== (task.assignee || '');
+
+  // Keyboard shortcuts: Escape to deselect, Cmd/Ctrl+S to save
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onCancel();
+      } else if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        if (hasChanges) handleSave();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [hasChanges, onCancel]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const placeholder = format === 'owl'
     ? `# Task Title\n\nDescribe the task in owl format...\n\n## Components\n\n- Component A\n- Component B\n\n## Constraints\n\n- Must do X\n- Must not do Y`
