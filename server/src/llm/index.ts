@@ -23,7 +23,7 @@ import { resolveSecret, checkAgentAuth } from '../secrets.js';
 export async function createLLMProvider(config: LLMProviderConfig): Promise<LLMProvider> {
   switch (config.provider) {
     case 'groq': {
-      const apiKey = config.apiKey || await resolveSecret('GROQ_API_KEY') || '';
+      const apiKey = config.apiKey || await resolveSecret('GROQ_API_KEY', { allowEnvFallback: false }) || '';
       return new OpenAICompatibleProvider({
         name: 'groq',
         apiKey,
@@ -41,7 +41,7 @@ export async function createLLMProvider(config: LLMProviderConfig): Promise<LLMP
       });
 
     case 'openai': {
-      const apiKey = config.apiKey || await resolveSecret('OPENAI_API_KEY') || '';
+      const apiKey = config.apiKey || await resolveSecret('OPENAI_API_KEY', { allowEnvFallback: false }) || '';
       return new OpenAICompatibleProvider({
         name: 'openai',
         apiKey,
@@ -51,7 +51,7 @@ export async function createLLMProvider(config: LLMProviderConfig): Promise<LLMP
     }
 
     case 'xai': {
-      const apiKey = config.apiKey || await resolveSecret('XAI_API_KEY') || '';
+      const apiKey = config.apiKey || await resolveSecret('XAI_API_KEY', { allowEnvFallback: false }) || '';
       return new OpenAICompatibleProvider({
         name: 'xai',
         apiKey,
@@ -105,7 +105,7 @@ export async function autoDetectProvider(): Promise<LLMProvider | null> {
 
   // 2. Direct mode — resolve keys from keychain/file/env
   for (const { provider, secretName, defaultModel } of PROXY_BACKENDS) {
-    const key = await resolveSecret(secretName, { silent: true });
+    const key = await resolveSecret(secretName, { silent: true, allowEnvFallback: false });
     if (key) {
       return createLLMProvider({ provider, apiKey: key, defaultModel });
     }

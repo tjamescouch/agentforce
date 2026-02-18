@@ -25,7 +25,7 @@ interface ResolveOptions {
   keychainService?: string;
   /** Keychain account name override (default: same as key name) */
   keychainAccount?: string;
-  /** Whether to allow env var fallback (default: true, with warning) */
+  /** Whether to allow env var fallback (default: false — keys in env vars not allowed) */
   allowEnvFallback?: boolean;
   /** Suppress warnings (for testing) */
   silent?: boolean;
@@ -42,7 +42,7 @@ export async function resolveSecret(
   const {
     keychainService = 'agentforce',
     keychainAccount = name,
-    allowEnvFallback = true,
+    allowEnvFallback = false,
     silent = false,
   } = options;
 
@@ -71,15 +71,13 @@ export async function resolveSecret(
     }
   }
 
-  // 3. Environment variable (fallback)
-  const envValue = process.env[name];
-  if (envValue && envValue !== 'proxy-managed') {
-    if (allowEnvFallback) {
-      if (!silent) console.warn(`[secrets] ${name}: falling back to env var (consider using agentauth proxy or macOS Keychain)`);
+  // 3. Environment variable — disabled by default (keys in env vars not allowed)
+  //    Only used if explicitly opted in (e.g., CI/testing)
+  if (allowEnvFallback) {
+    const envValue = process.env[name];
+    if (envValue && envValue !== 'proxy-managed') {
+      if (!silent) console.warn(`[secrets] WARNING: ${name} resolved from env var — this is not allowed in production. Use agentauth proxy or macOS Keychain.`);
       return envValue;
-    } else {
-      if (!silent) console.warn(`[secrets] ${name}: found in env var but env fallback disabled`);
-      return null;
     }
   }
 

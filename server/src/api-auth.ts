@@ -8,6 +8,7 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
+import { timingSafeEqual } from 'crypto';
 import { resolveSecret } from './secrets.js';
 
 let cachedToken: string | null | undefined = undefined; // undefined = not yet resolved
@@ -24,6 +25,12 @@ async function getToken(): Promise<string | null> {
   });
 
   cachedToken = value;
+
+  if (!cachedToken) {
+    console.warn('[api-auth] WARNING: No API_TOKEN configured — API endpoints are unauthenticated');
+    console.warn('[api-auth] Set token in macOS Keychain: security add-generic-password -s agentforce -a API_TOKEN -w "your-token"');
+  }
+
   return cachedToken;
 }
 
@@ -47,7 +54,9 @@ export async function apiAuth(req: Request, res: Response, next: NextFunction): 
     }
 
     const provided = authHeader.slice(7);
-    if (provided !== token) {
+    const a = Buffer.from(provided);
+    const b = Buffer.from(token);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
       res.status(403).json({ error: 'Invalid token' });
       return;
     }
