@@ -2633,60 +2633,6 @@ html[data-theme="dark"] .connection-steps {
   animation: message-in 0.2s ease;
 }
 
-/* ============ macOS Traffic Lights ============ */
-.traffic-lights {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  margin-right: 4px;
-}
-
-.traffic-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  transition: opacity 0.2s ease, transform 0.15s ease;
-  cursor: default;
-}
-
-.traffic-dot.red {
-  background: #ff5f57;
-  opacity: 0.4;
-}
-
-.traffic-dot.red.active {
-  opacity: 1;
-  box-shadow: 0 0 4px rgba(255, 95, 87, 0.4);
-}
-
-.traffic-dot.yellow {
-  background: #febc2e;
-  opacity: 0.4;
-}
-
-.traffic-dot.green {
-  background: #28c840;
-  opacity: 0.4;
-}
-
-.traffic-dot.green.active {
-  opacity: 1;
-  box-shadow: 0 0 4px rgba(40, 200, 64, 0.4);
-}
-
-.traffic-lights:hover .traffic-dot {
-  opacity: 0.8;
-}
-
-.traffic-lights:hover .traffic-dot.active {
-  opacity: 1;
-}
-
-.traffic-dot:hover {
-  transform: scale(1.15);
-}
-
-/* ============ Task Panel ============ */
 
 .task-panel {
   width: 320px;
