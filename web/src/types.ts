@@ -1,5 +1,19 @@
 // ============ Types ============
 
+export type TaskStatus = 'pending' | 'active' | 'done';
+export type TaskFormat = 'owl' | 'prompt';
+
+export interface Task {
+  id: string;
+  title: string;
+  format: TaskFormat;
+  content: string;
+  status: TaskStatus;
+  assignee?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface Agent {
   id: string;
   nick: string;
@@ -83,6 +97,9 @@ export interface DashboardState {
   lockScreen: boolean;
   sendError: string | null;
   activity: ActivityStats;
+  tasks: Task[];
+  selectedTaskId: string | null;
+  taskPanelOpen: boolean;
 }
 
 export type DashboardAction =
@@ -121,7 +138,13 @@ export type DashboardAction =
   | { type: 'HIDE_LOCK' }
   | { type: 'TOGGLE_LOCK' }
   | { type: 'SEND_ERROR'; error: string }
-  | { type: 'CLEAR_SEND_ERROR' };
+  | { type: 'CLEAR_SEND_ERROR' }
+  | { type: 'ADD_TASK'; task: Task }
+  | { type: 'UPDATE_TASK'; task: Task }
+  | { type: 'DELETE_TASK'; taskId: string }
+  | { type: 'SELECT_TASK'; taskId: string | null }
+  | { type: 'TOGGLE_TASK_PANEL' }
+  | { type: 'REORDER_TASKS'; taskIds: string[] };
 
 export interface StateSyncPayload {
   agents: Agent[];
