@@ -8,6 +8,8 @@ import crypto from 'crypto';
 import multer from 'multer';
 import nacl from 'tweetnacl';
 import tweetnaclUtil from 'tweetnacl-util';
+import { autoDetectProvider } from './llm/index.js';
+import { createLLMRoutes } from './llm-routes.js';
 
 const { encodeBase64, decodeBase64 } = tweetnaclUtil;
 
@@ -1671,6 +1673,24 @@ app.get('/api/download/:transferId/:fileIndex', (req: Request, res: Response) =>
   res.setHeader('Content-Length', file.data.length);
   return res.send(file.data);
 });
+
+// JSON body parser for API routes
+app.use('/api', express.json({ limit: '1mb' }));
+
+// LLM Provider API
+const llmProvider = autoDetectProvider();
+if (llmProvider) {
+  app.use('/api/llm', createLLMRoutes(llmProvider));
+  console.log(`[llm] Provider "${llmProvider.name}" ready at /api/llm (model: ${llmProvider.defaultModel})`);
+} else {
+  app.use('/api/llm', (_req: Request, res: Response) => {
+    res.status(503).json({
+      error: 'No LLM provider configured',
+      hint: 'Set GROQ_API_KEY, OPENAI_API_KEY, or XAI_API_KEY env var',
+    });
+  });
+  console.log('[llm] No provider configured — set GROQ_API_KEY to enable');
+}
 
 // Static files (for built React app)
 app.use(express.static('public'));
