@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import type { DashboardAction, WsSendFn } from '../types';
+import { getOrCreateIdentity } from '../crypto';
 
 export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled: boolean = true): WsSendFn {
   const ws = useRef<WebSocket | null>(null);
@@ -22,18 +23,29 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled:
         console.log('WebSocket connected');
         reconnectDelay = 2000;
         const storedNick = localStorage.getItem('dashboardNick');
-        const storedIdentity = localStorage.getItem('dashboardIdentity');
-        // Force lurk first so the server sees a mode *change* to participate,
-        // which triggers per-session agentchat WS creation
-        ws.current!.send(JSON.stringify({ type: 'set_mode', data: { mode: 'lurk' } }));
-        ws.current!.send(JSON.stringify({
-          type: 'set_mode',
-          data: {
-            mode: 'participate',
-            nick: storedNick || undefined,
-            identity: storedIdentity ? JSON.parse(storedIdentity) : undefined
+        
+        // Always ensure identity exists before connecting in participate mode
+        getOrCreateIdentity().then(identity => {
+          if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+            // Force lurk first so the server sees a mode *change* to participate,
+            // which triggers per-session agentchat WS creation
+            ws.current.send(JSON.stringify({ type: 'set_mode', data: { mode: 'lurk' } }));
+            ws.current.send(JSON.stringify({
+              type: 'set_mode',
+              data: {
+                mode: 'participate',
+                nick: storedNick || undefined,
+                identity
+              }
+            }));
           }
-        }));
+        }).catch(err => {
+          console.error('Failed to generate identity:', err);
+          // Fall back to lurk mode if crypto fails
+          if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify({ type: 'set_mode', data: { mode: 'lurk' } }));
+          }
+        });
       };
 
       ws.current.onmessage = (e: MessageEvent) => {
