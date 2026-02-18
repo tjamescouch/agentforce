@@ -15,6 +15,7 @@ interface MessageRowProps {
 
 function MessageRow({ msg, agents, fileData }: MessageRowProps) {
   const [copied, setCopied] = useState(false);
+  const contentRef = useRef<HTMLSpanElement>(null);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(msg.content).then(() => {
@@ -22,6 +23,31 @@ function MessageRow({ msg, agents, fileData }: MessageRowProps) {
       setTimeout(() => setCopied(false), 1500);
     });
   };
+
+  // Inject per-code-block copy buttons after markdown renders
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    el.querySelectorAll('pre').forEach((pre) => {
+      if (pre.querySelector('.code-copy-btn')) return; // already injected
+      const btn = document.createElement('button');
+      btn.className = 'code-copy-btn';
+      btn.title = 'Copy code';
+      btn.textContent = '⎘';
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const code = pre.querySelector('code');
+        const text = code ? code.innerText : pre.innerText;
+        navigator.clipboard.writeText(text).then(() => {
+          btn.textContent = '✓';
+          btn.classList.add('copied');
+          setTimeout(() => { btn.textContent = '⎘'; btn.classList.remove('copied'); }, 1500);
+        });
+      });
+      pre.style.position = 'relative';
+      pre.appendChild(btn);
+    });
+  }, [msg.content]);
 
   return (
     <div className="message">
@@ -56,13 +82,13 @@ function MessageRow({ msg, agents, fileData }: MessageRowProps) {
       ) : isPatchMessage(msg.content) ? (
         <DiffViewer content={msg.content} />
       ) : (
-        <span className="content" dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
+        <span ref={contentRef} className="content" dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
       )}
       <button
         className={`msg-copy-btn${copied ? ' copied' : ''}`}
         onClick={handleCopy}
-        title="Copy message"
-        aria-label="Copy message"
+        title="Copy full message"
+        aria-label="Copy full message"
       >
         {copied ? '✓' : '⎘'}
       </button>
