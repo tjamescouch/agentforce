@@ -11,7 +11,24 @@ export const savedRightPanelOpen = typeof window !== 'undefined' ? (localStorage
 const loadPersistedTasks = (): Task[] => {
   try {
     const saved = localStorage.getItem('dashboardTasks');
-    return saved ? JSON.parse(saved) : [];
+    if (!saved) return [];
+    const parsed = JSON.parse(saved);
+    if (!Array.isArray(parsed)) return [];
+    // Validate and migrate task shapes
+    return parsed.filter((t: unknown): t is Task => {
+      if (!t || typeof t !== 'object') return false;
+      const obj = t as Record<string, unknown>;
+      return typeof obj.id === 'string' && typeof obj.content === 'string';
+    }).map((t: Task) => ({
+      id: t.id,
+      title: t.title || '',
+      format: t.format === 'owl' ? 'owl' : 'prompt',
+      content: t.content || '',
+      status: ['pending', 'active', 'done'].includes(t.status) ? t.status : 'pending',
+      assignee: t.assignee,
+      createdAt: t.createdAt || Date.now(),
+      updatedAt: t.updatedAt || Date.now(),
+    }));
   } catch { return []; }
 };
 
