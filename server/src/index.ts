@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Request, Response, NextFunction, Router } from 'express';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
@@ -8,6 +8,8 @@ import crypto from 'crypto';
 import multer from 'multer';
 import nacl from 'tweetnacl';
 import tweetnaclUtil from 'tweetnacl-util';
+import { createFileStore } from './filestore-factory.js';
+import { createFileStoreRoutes } from './filestore-routes.js';
 
 const { encodeBase64, decodeBase64 } = tweetnaclUtil;
 
@@ -1672,6 +1674,24 @@ app.get('/api/download/:transferId/:fileIndex', (req: Request, res: Response) =>
   return res.send(file.data);
 });
 
+// FileStore REST API (lazy-initialized)
+let fileStoreRouter: Router | null = null;
+createFileStore()
+  .then(store => {
+    fileStoreRouter = createFileStoreRoutes(store);
+    console.log('[filestore] REST API ready at /api/files');
+  })
+  .catch(err => {
+    console.error('[filestore] Failed to initialize:', err);
+  });
+
+app.use('/api/files', (req: Request, res: Response, next: NextFunction) => {
+  if (!fileStoreRouter) {
+    return res.status(503).json({ error: 'FileStore initializing, try again shortly' });
+  }
+  fileStoreRouter(req, res, next);
+});
+
 // Static files (for built React app)
 app.use(express.static('public'));
 
@@ -1779,6 +1799,20 @@ setInterval(() => {
 loadAgentNames();
 identity = generateEphemeralIdentity('observer');
 connectToAgentChat(identity);
+
+// Initialize FileStore and start server
+createFileStore()
+  .then(fileStore => {
+    // Mount BEFORE static files by inserting into the app stack
+    // We use app.use here, but the routes were already placed above static middleware
+    // via the fileStoreReady pattern below
+    (app as any)._fileStore = fileStore;
+    console.log('[filestore] REST API ready at /api/files');
+  })
+  .catch(err => {
+    console.error('[filestore] Failed to initialize:', err);
+    console.warn('[filestore] REST API not available');
+  });
 
 server.listen(PORT, () => {
   console.log(`Dashboard server running at http://localhost:${PORT}`);
