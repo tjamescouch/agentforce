@@ -118,7 +118,7 @@ function TaskEditor({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  });
+  }, [hasChanges, onCancel]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const placeholder = format === 'owl'
     ? `# Task Title\n\nDescribe the task in owl format...\n\n## Components\n\n- Component A\n- Component B\n\n## Constraints\n\n- Must do X\n- Must not do Y`
