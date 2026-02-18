@@ -9,7 +9,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@agentchat/identity": "file:../../agentchat-identity",
     "dompurify": "^3.0.8",
     "marked": "^12.0.0",
     "react": "^18.2.0",

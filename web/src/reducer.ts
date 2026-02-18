@@ -1,5 +1,5 @@
 import type { DashboardState, DashboardAction, Message, Task } from './types';
-import { saveIdentity } from '@agentchat/identity';
+import { saveIdentity } from './identity';
 
 // ============ Persistence ============
 

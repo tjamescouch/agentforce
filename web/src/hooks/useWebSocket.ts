@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import type { DashboardAction, WsSendFn } from '../types';
-import { getOrCreateIdentity } from '@agentchat/identity';
+import { getOrCreateIdentity } from '../identity';
 
 export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled: boolean = true): WsSendFn {
   const ws = useRef<WebSocket | null>(null);
