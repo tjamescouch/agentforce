@@ -1,4 +1,3 @@
-import { useState, useRef, useEffect } from 'react';
 import type { DashboardState, DashboardAction, WsSendFn, Theme } from '../types';
 import { formatMsgRate } from '../utils';
 
@@ -40,11 +39,6 @@ export function TopBar({ state, dispatch, send, theme, setTheme }: TopBarProps) 
   return (
     <div className="topbar">
       <div className="topbar-left">
-        <div className="traffic-lights" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          <span className={`traffic-dot red ${!state.connected ? 'active' : ''}`} title="Close" />
-          <span className="traffic-dot yellow" title="Minimize" />
-          <span className={`traffic-dot green ${state.connected ? 'active' : ''}`} title="Connected" />
-        </div>
         {/* Logs toggle */}
         <button
           className={`topbar-icon-btn ${state.logsOpen ? 'active' : ''}`}
@@ -66,17 +60,6 @@ export function TopBar({ state, dispatch, send, theme, setTheme }: TopBarProps) 
         >
           {themeIcon}
         </button>
-        {/* Sidebar toggle */}
-        <button
-          className="sidebar-toggle"
-          onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
-          title={state.sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="1" y="2" width="14" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.2" fill="none"/>
-            <line x1="5.5" y1="2" x2="5.5" y2="14" stroke="currentColor" strokeWidth="1.2"/>
-          </svg>
-        </button>
         <span className="logo">agentforce</span>
         <span className={`status ${state.connected ? 'online' : 'offline'}`}>
           {state.connected ? 'Connected' : 'Disconnected'}
@@ -91,17 +74,6 @@ export function TopBar({ state, dispatch, send, theme, setTheme }: TopBarProps) 
         {state.dashboardAgent && (
           <span className="dashboard-nick">{state.dashboardAgent.nick}</span>
         )}
-        {/* Right panel toggle */}
-        <button
-          className="sidebar-toggle"
-          onClick={() => dispatch({ type: 'TOGGLE_RIGHT_PANEL' })}
-          title={state.rightPanelOpen ? 'Hide detail panel' : 'Show detail panel'}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="1" y="2" width="14" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.2" fill="none"/>
-            <line x1="10.5" y1="2" x2="10.5" y2="14" stroke="currentColor" strokeWidth="1.2"/>
-          </svg>
-        </button>
         {/* Power button — triggers lock screen */}
         <button
           className="power-btn"
