@@ -1,4 +1,5 @@
 import type { DashboardState, DashboardAction, Message } from './types';
+import { saveIdentity } from '@agentchat/identity';
 
 // ============ Persistence ============
 
@@ -212,10 +213,7 @@ export function reducer(state: DashboardState, action: DashboardAction): Dashboa
       if (typeof window !== 'undefined') {
         localStorage.setItem('dashboardNick', agent.nick);
         if (action.data.publicKey && action.data.secretKey) {
-          localStorage.setItem('dashboardIdentity', JSON.stringify({
-            publicKey: action.data.publicKey,
-            secretKey: action.data.secretKey
-          }));
+          saveIdentity({ publicKey: action.data.publicKey, secretKey: action.data.secretKey });
         }
       }
       return { ...state, dashboardAgent: agent };

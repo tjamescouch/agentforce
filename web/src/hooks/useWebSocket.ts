@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import type { DashboardAction, WsSendFn } from '../types';
+import { getOrCreateIdentity } from '@agentchat/identity';
 
 export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled: boolean = true): WsSendFn {
   const ws = useRef<WebSocket | null>(null);
@@ -18,11 +19,11 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled:
       dispatch({ type: 'CONNECTING' });
       ws.current = new WebSocket(wsUrl);
 
-      ws.current.onopen = () => {
+      ws.current.onopen = async () => {
         console.log('WebSocket connected');
         reconnectDelay = 2000;
         const storedNick = localStorage.getItem('dashboardNick');
-        const storedIdentity = localStorage.getItem('dashboardIdentity');
+        const identity = await getOrCreateIdentity();
         // Force lurk first so the server sees a mode *change* to participate,
         // which triggers per-session agentchat WS creation
         ws.current!.send(JSON.stringify({ type: 'set_mode', data: { mode: 'lurk' } }));
@@ -31,7 +32,7 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled:
           data: {
             mode: 'participate',
             nick: storedNick || undefined,
-            identity: storedIdentity ? JSON.parse(storedIdentity) : undefined
+            identity: identity || undefined
           }
         }));
       };
