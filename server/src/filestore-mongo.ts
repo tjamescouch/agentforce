@@ -87,20 +87,21 @@ export class MongoFileStore implements FileStore {
   async put(key: string, data: Buffer, metadata?: Partial<FileMetadata>): Promise<void> {
     this.ensureConnected();
     const now = new Date();
-    const metaFields = {
-      contentType: metadata?.contentType ?? 'application/octet-stream',
-      size: data.length,
-      updatedAt: now,
-      ...metadata,
-    };
+    const contentType = metadata?.contentType ?? 'application/octet-stream';
 
-    // Atomic upsert: $setOnInsert preserves createdAt on overwrites, single round trip
+    // Atomic upsert: dot notation avoids $set/$setOnInsert path conflicts.
+    // $setOnInsert only fires on insert, preserving createdAt on overwrites.
     await this.collection.updateOne(
       { _id: key },
       {
-        $set: { data: new Binary(data), metadata: { ...metaFields } },
+        $set: {
+          data: new Binary(data),
+          'metadata.contentType': contentType,
+          'metadata.size': data.length,
+          'metadata.updatedAt': now,
+        },
         $setOnInsert: { 'metadata.createdAt': now },
-      } as any,
+      } as Record<string, unknown>,
       { upsert: true },
     );
   }
