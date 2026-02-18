@@ -10,6 +10,7 @@ import nacl from 'tweetnacl';
 import tweetnaclUtil from 'tweetnacl-util';
 import { autoDetectProvider } from './llm/index.js';
 import { createLLMRoutes } from './llm-routes.js';
+import { apiAuth } from './api-auth.js';
 
 const { encodeBase64, decodeBase64 } = tweetnaclUtil;
 
@@ -1674,23 +1675,42 @@ app.get('/api/download/:transferId/:fileIndex', (req: Request, res: Response) =>
   return res.send(file.data);
 });
 
-// JSON body parser for API routes
-app.use('/api', express.json({ limit: '1mb' }));
-
-// LLM Provider API
-const llmProvider = autoDetectProvider();
-if (llmProvider) {
-  app.use('/api/llm', createLLMRoutes(llmProvider));
-  console.log(`[llm] Provider "${llmProvider.name}" ready at /api/llm (model: ${llmProvider.defaultModel})`);
-} else {
-  app.use('/api/llm', (_req: Request, res: Response) => {
-    res.status(503).json({
-      error: 'No LLM provider configured',
-      hint: 'Set GROQ_API_KEY, OPENAI_API_KEY, or XAI_API_KEY env var',
-    });
+// LLM Provider API — initialized async (keychain resolution)
+// Placeholder route until provider is resolved
+let llmRouterReady = false;
+app.use('/api/llm', (req: Request, res: Response, next: NextFunction) => {
+  if (llmRouterReady) return next();
+  res.status(503).json({
+    error: 'LLM provider initializing...',
+    hint: 'Try again in a moment',
   });
-  console.log('[llm] No provider configured — set GROQ_API_KEY to enable');
-}
+});
+
+(async () => {
+  try {
+    const llmProvider = await autoDetectProvider();
+    if (llmProvider) {
+      app.use('/api/llm', apiAuth, createLLMRoutes(llmProvider));
+      llmRouterReady = true;
+      console.log(`[llm] Provider "${llmProvider.name}" ready at /api/llm (model: ${llmProvider.defaultModel})`);
+    } else {
+      app.use('/api/llm', (_req: Request, res: Response) => {
+        res.status(503).json({
+          error: 'No LLM provider configured',
+          hint: 'Store your API key in macOS Keychain: security add-generic-password -s agentforce -a GROQ_API_KEY -w "your_key"',
+        });
+      });
+      llmRouterReady = true;
+      console.log('[llm] No provider configured — store key in Keychain: security add-generic-password -s agentforce -a GROQ_API_KEY -w "your_key"');
+    }
+  } catch (err) {
+    console.error('[llm] Provider initialization failed:', err);
+    app.use('/api/llm', (_req: Request, res: Response) => {
+      res.status(500).json({ error: 'LLM provider initialization failed' });
+    });
+    llmRouterReady = true;
+  }
+})();
 
 // Static files (for built React app)
 app.use(express.static('public'));

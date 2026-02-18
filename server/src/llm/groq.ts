@@ -7,7 +7,7 @@
  * API docs: https://console.groq.com/docs/api-reference
  */
 
-import type {
+import type {  
   LLMProvider,
   LLMCompletionRequest,
   LLMCompletionResponse,
@@ -17,19 +17,25 @@ import type {
 const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
 const DEFAULT_MODEL = 'llama-3.1-70b-versatile';
 
-export class GroqProvider implements LLMProvider {
-  readonly name = 'groq';
+/**
+ * OpenAI-compatible LLM provider.
+ * Works with Groq, OpenAI, xAI, Ollama, and any other provider
+ * that implements the OpenAI chat completions API.
+ */
+export class OpenAICompatibleProvider implements LLMProvider {
+  readonly name: string;
   readonly defaultModel: string;
   private readonly apiKey: string;
   private readonly baseUrl: string;
 
-  constructor(options: { apiKey: string; baseUrl?: string; defaultModel?: string }) {
+  constructor(options: { apiKey: string; baseUrl?: string; defaultModel?: string; name?: string }) {
     if (!options.apiKey) {
-      throw new Error('Groq API key is required. Set GROQ_API_KEY env var.');
+      throw new Error('API key is required');
     }
     this.apiKey = options.apiKey;
     this.baseUrl = options.baseUrl || GROQ_BASE_URL;
     this.defaultModel = options.defaultModel || DEFAULT_MODEL;
+    this.name = options.name || 'groq';
   }
 
   async listModels(): Promise<string[]> {

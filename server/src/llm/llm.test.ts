@@ -6,12 +6,12 @@
  * unless GROQ_API_KEY is set.
  */
 
-import { createLLMProvider, autoDetectProvider, GroqProvider } from './index.js';
+import { createLLMProvider, autoDetectProvider, OpenAICompatibleProvider } from './index.js';
 
 // ============ Unit Tests ============
 
-function testFactoryGroq() {
-  const provider = createLLMProvider({
+async function testFactoryGroq() {
+  const provider = await createLLMProvider({
     provider: 'groq',
     apiKey: 'test-key',
     defaultModel: 'llama-3.1-8b-instant',
@@ -21,18 +21,18 @@ function testFactoryGroq() {
   console.log('✓ factory creates Groq provider');
 }
 
-function testFactoryOllama() {
-  const provider = createLLMProvider({
+async function testFactoryOllama() {
+  const provider = await createLLMProvider({
     provider: 'ollama',
     defaultModel: 'phi3',
   });
-  assert(provider.name === 'groq', 'Ollama uses GroqProvider internally');
+  assert(provider.name === 'ollama', 'Ollama provider should have name "ollama"');
   assert(provider.defaultModel === 'phi3', 'should use custom model');
   console.log('✓ factory creates Ollama provider');
 }
 
-function testFactoryOpenAI() {
-  const provider = createLLMProvider({
+async function testFactoryOpenAI() {
+  const provider = await createLLMProvider({
     provider: 'openai',
     apiKey: 'test-key',
   });
@@ -40,8 +40,8 @@ function testFactoryOpenAI() {
   console.log('✓ factory creates OpenAI provider');
 }
 
-function testFactoryXAI() {
-  const provider = createLLMProvider({
+async function testFactoryXAI() {
+  const provider = await createLLMProvider({
     provider: 'xai',
     apiKey: 'test-key',
   });
@@ -49,9 +49,9 @@ function testFactoryXAI() {
   console.log('✓ factory creates xAI provider');
 }
 
-function testFactoryUnknown() {
+async function testFactoryUnknown() {
   try {
-    createLLMProvider({ provider: 'unknown' as any });
+    await createLLMProvider({ provider: 'unknown' as any });
     assert(false, 'should have thrown');
   } catch (e) {
     assert((e as Error).message.includes('Unknown LLM provider'), 'should throw for unknown provider');
@@ -59,7 +59,7 @@ function testFactoryUnknown() {
   console.log('✓ factory rejects unknown provider');
 }
 
-function testAutoDetectNoKey() {
+async function testAutoDetectNoKey() {
   const originalKey = process.env.GROQ_API_KEY;
   const originalOAI = process.env.OPENAI_API_KEY;
   const originalXAI = process.env.XAI_API_KEY;
@@ -67,7 +67,7 @@ function testAutoDetectNoKey() {
   delete process.env.OPENAI_API_KEY;
   delete process.env.XAI_API_KEY;
 
-  const provider = autoDetectProvider();
+  const provider = await autoDetectProvider();
   assert(provider === null, 'should return null when no keys set');
 
   // Restore
@@ -78,14 +78,14 @@ function testAutoDetectNoKey() {
   console.log('✓ autoDetect returns null with no keys');
 }
 
-function testGroqNoKey() {
+function testOpenAICompatibleNoKey() {
   try {
-    new GroqProvider({ apiKey: '' });
+    new OpenAICompatibleProvider({ apiKey: '' });
     assert(false, 'should have thrown');
   } catch (e) {
     assert((e as Error).message.includes('API key is required'), 'should require API key');
   }
-  console.log('✓ GroqProvider requires API key');
+  console.log('✓ OpenAICompatibleProvider requires API key');
 }
 
 // ============ Integration Tests ============
@@ -97,7 +97,7 @@ async function testGroqComplete() {
     return;
   }
 
-  const provider = new GroqProvider({ apiKey: key, defaultModel: 'llama-3.1-8b-instant' });
+  const provider = new OpenAICompatibleProvider({ apiKey: key, defaultModel: 'llama-3.1-8b-instant', name: 'groq' });
   const result = await provider.complete({
     messages: [{ role: 'user', content: 'Say "hello" and nothing else.' }],
     max_tokens: 10,
@@ -117,7 +117,7 @@ async function testGroqStream() {
     return;
   }
 
-  const provider = new GroqProvider({ apiKey: key, defaultModel: 'llama-3.1-8b-instant' });
+  const provider = new OpenAICompatibleProvider({ apiKey: key, defaultModel: 'llama-3.1-8b-instant', name: 'groq' });
   const stream = provider.stream({
     messages: [{ role: 'user', content: 'Count from 1 to 5, just the numbers.' }],
     max_tokens: 30,
@@ -148,13 +148,13 @@ async function main() {
   console.log('=== LLM Provider Tests ===\n');
 
   // Unit tests
-  testFactoryGroq();
-  testFactoryOllama();
-  testFactoryOpenAI();
-  testFactoryXAI();
-  testFactoryUnknown();
-  testAutoDetectNoKey();
-  testGroqNoKey();
+  await testFactoryGroq();
+  await testFactoryOllama();
+  await testFactoryOpenAI();
+  await testFactoryXAI();
+  await testFactoryUnknown();
+  await testAutoDetectNoKey();
+  testOpenAICompatibleNoKey();
 
   // Integration tests
   await testGroqComplete();

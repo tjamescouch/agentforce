@@ -7,11 +7,14 @@
  * GET  /api/llm/status           — provider info
  */
 
-import { Router, Request, Response } from 'express';
+import express, { Router, Request, Response } from 'express';
 import type { LLMProvider, LLMMessage } from './llm/index.js';
 
 export function createLLMRoutes(provider: LLMProvider): Router {
   const router = Router();
+
+  // JSON body parser — scoped to LLM routes only
+  router.use(express.json({ limit: '1mb' }));
 
   // Status
   router.get('/status', (_req: Request, res: Response) => {
