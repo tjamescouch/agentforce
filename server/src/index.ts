@@ -10,6 +10,9 @@ import nacl from 'tweetnacl';
 import tweetnaclUtil from 'tweetnacl-util';
 import { createFileStore } from './filestore-factory.js';
 import { createFileStoreRoutes } from './filestore-routes.js';
+import { autoDetectProvider } from './llm/index.js';
+import { createLLMRoutes } from './llm-routes.js';
+import { apiAuth } from './api-auth.js';
 
 const { encodeBase64, decodeBase64 } = tweetnaclUtil;
 
@@ -1674,18 +1677,55 @@ app.get('/api/download/:transferId/:fileIndex', (req: Request, res: Response) =>
   return res.send(file.data);
 });
 
+// LLM Provider API — initialized async (keychain resolution)
+// Placeholder route until provider is resolved
+let llmRouterReady = false;
+app.use('/api/llm', (req: Request, res: Response, next: NextFunction) => {
+  if (llmRouterReady) return next();
+  res.status(503).json({
+    error: 'LLM provider initializing...',
+    hint: 'Try again in a moment',
+  });
+});
+
+(async () => {
+  try {
+    const llmProvider = await autoDetectProvider();
+    if (llmProvider) {
+      app.use('/api/llm', apiAuth, createLLMRoutes(llmProvider));
+      llmRouterReady = true;
+      console.log(`[llm] Provider "${llmProvider.name}" ready at /api/llm (model: ${llmProvider.defaultModel})`);
+    } else {
+      app.use('/api/llm', (_req: Request, res: Response) => {
+        res.status(503).json({
+          error: 'No LLM provider configured',
+          hint: 'Store your API key in macOS Keychain: security add-generic-password -s agentforce -a GROQ_API_KEY -w "your_key"',
+        });
+      });
+      llmRouterReady = true;
+      console.log('[llm] No provider configured — store key in Keychain: security add-generic-password -s agentforce -a GROQ_API_KEY -w "your_key"');
+    }
+  } catch (err) {
+    console.error('[llm] Provider initialization failed:', err);
+    app.use('/api/llm', (_req: Request, res: Response) => {
+      res.status(500).json({ error: 'LLM provider initialization failed' });
+    });
+    llmRouterReady = true;
+  }
+})();
+
 // FileStore REST API (lazy-initialized)
 let fileStoreRouter: Router | null = null;
 createFileStore()
   .then(store => {
-    fileStoreRouter = createFileStoreRoutes(store);
+    fileStoreRouter = createFileStoreRoutes(store) as unknown as Router;
     console.log('[filestore] REST API ready at /api/files');
   })
   .catch(err => {
     console.error('[filestore] Failed to initialize:', err);
   });
 
-app.use('/api/files', (req: Request, res: Response, next: NextFunction) => {
+app.use('/api/files', apiAuth, (req: Request, res: Response, next: NextFunction) => {
   if (!fileStoreRouter) {
     return res.status(503).json({ error: 'FileStore initializing, try again shortly' });
   }
@@ -1799,20 +1839,6 @@ setInterval(() => {
 loadAgentNames();
 identity = generateEphemeralIdentity('observer');
 connectToAgentChat(identity);
-
-// Initialize FileStore and start server
-createFileStore()
-  .then(fileStore => {
-    // Mount BEFORE static files by inserting into the app stack
-    // We use app.use here, but the routes were already placed above static middleware
-    // via the fileStoreReady pattern below
-    (app as any)._fileStore = fileStore;
-    console.log('[filestore] REST API ready at /api/files');
-  })
-  .catch(err => {
-    console.error('[filestore] Failed to initialize:', err);
-    console.warn('[filestore] REST API not available');
-  });
 
 server.listen(PORT, () => {
   console.log(`Dashboard server running at http://localhost:${PORT}`);
