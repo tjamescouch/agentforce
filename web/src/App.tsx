@@ -7,7 +7,7 @@ import { useTheme } from './hooks/useTheme';
 import { TopBar } from './components/TopBar';
 import { Sidebar } from './components/Sidebar';
 import { MessageFeed } from './components/MessageFeed';
-import { RightPanel } from './components/RightPanel';
+import { TaskPanel } from './components/TaskPanel';
 import { DropZone } from './components/DropZone';
 import { NetworkPulse } from './components/NetworkPulse';
 import { LogsPanel } from './components/LogsPanel';
@@ -30,7 +30,7 @@ export default function App() {
     collapseThreshold: 60,
     storageKey: 'sidebar',
   });
-  const rightPanel = useResizable(280, 200, 500, 'right');
+  const taskPanel = useResizable(320, 200, 600, 'right');
   const logsPanel = useResizable(200, 80, 500, 'bottom');
   const [theme, setTheme] = useTheme();
 
@@ -64,10 +64,10 @@ export default function App() {
                 <MessageFeed state={state} dispatch={dispatch} send={send} />
               </DropZone>
             )}
-            {state.rightPanelOpen && (
+            {state.taskPanelOpen && (
               <>
-                <div className="resize-handle" ref={rightPanel.handleRef} onMouseDown={rightPanel.onMouseDown} />
-                <RightPanel state={state} dispatch={dispatch} send={send} panelWidth={rightPanel.width} />
+                <div className="resize-handle" ref={taskPanel.handleRef} onMouseDown={taskPanel.onMouseDown} />
+                <TaskPanel state={state} dispatch={dispatch} send={send} panelWidth={taskPanel.width} />
               </>
             )}
           </div>

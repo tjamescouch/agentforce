@@ -1,4 +1,4 @@
-import type { DashboardState, DashboardAction, Message } from './types';
+import type { DashboardState, DashboardAction, Message, Task } from './types';
 import { saveIdentity } from '@agentchat/identity';
 
 // ============ Persistence ============
@@ -7,6 +7,19 @@ export const savedMode = typeof window !== 'undefined' ? localStorage.getItem('d
 export const savedSidebarOpen = typeof window !== 'undefined' ? localStorage.getItem('sidebarOpen') === 'true' : false;
 export const savedNick = typeof window !== 'undefined' ? localStorage.getItem('dashboardNick') : null;
 export const savedRightPanelOpen = typeof window !== 'undefined' ? (localStorage.getItem('rightPanelOpen') ?? 'true') === 'true' : true;
+
+const loadPersistedTasks = (): Task[] => {
+  try {
+    const saved = localStorage.getItem('dashboardTasks');
+    return saved ? JSON.parse(saved) : [];
+  } catch { return []; }
+};
+
+const persistTasks = (tasks: Task[]) => {
+  try {
+    localStorage.setItem('dashboardTasks', JSON.stringify(tasks));
+  } catch (e) { console.warn('Failed to persist tasks:', e); }
+};
 
 const loadPersistedMessages = (): Record<string, Message[]> => {
   try {
@@ -56,7 +69,10 @@ export const initialState: DashboardState = {
   pulseOpen: false,
   lockScreen: false,
   sendError: null,
-  activity: { agents: {}, totalMsgsPerMin: 0 }
+  activity: { agents: {}, totalMsgsPerMin: 0 },
+  tasks: loadPersistedTasks(),
+  selectedTaskId: null,
+  taskPanelOpen: true
 };
 
 // ============ Reducer ============
@@ -233,6 +249,35 @@ export function reducer(state: DashboardState, action: DashboardAction): Dashboa
       return { ...state, sendError: action.error };
     case 'CLEAR_SEND_ERROR':
       return { ...state, sendError: null };
+    case 'ADD_TASK': {
+      const tasks = [...state.tasks, action.task];
+      persistTasks(tasks);
+      return { ...state, tasks, selectedTaskId: action.task.id, taskPanelOpen: true };
+    }
+    case 'UPDATE_TASK': {
+      const tasks = state.tasks.map(t => t.id === action.task.id ? action.task : t);
+      persistTasks(tasks);
+      return { ...state, tasks };
+    }
+    case 'DELETE_TASK': {
+      const tasks = state.tasks.filter(t => t.id !== action.taskId);
+      persistTasks(tasks);
+      return {
+        ...state,
+        tasks,
+        selectedTaskId: state.selectedTaskId === action.taskId ? null : state.selectedTaskId
+      };
+    }
+    case 'SELECT_TASK':
+      return { ...state, selectedTaskId: action.taskId };
+    case 'TOGGLE_TASK_PANEL':
+      return { ...state, taskPanelOpen: !state.taskPanelOpen };
+    case 'REORDER_TASKS': {
+      const taskMap = new Map(state.tasks.map(t => [t.id, t]));
+      const reordered = action.taskIds.map(id => taskMap.get(id)).filter(Boolean) as Task[];
+      persistTasks(reordered);
+      return { ...state, tasks: reordered };
+    }
     default:
       return state;
   }

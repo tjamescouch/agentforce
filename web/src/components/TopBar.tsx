@@ -91,15 +91,17 @@ export function TopBar({ state, dispatch, send, theme, setTheme }: TopBarProps) 
         {state.dashboardAgent && (
           <span className="dashboard-nick">{state.dashboardAgent.nick}</span>
         )}
-        {/* Right panel toggle */}
+        {/* Task panel toggle */}
         <button
           className="sidebar-toggle"
-          onClick={() => dispatch({ type: 'TOGGLE_RIGHT_PANEL' })}
-          title={state.rightPanelOpen ? 'Hide detail panel' : 'Show detail panel'}
+          onClick={() => dispatch({ type: 'TOGGLE_TASK_PANEL' })}
+          title={state.taskPanelOpen ? 'Hide tasks' : 'Show tasks'}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="1" y="2" width="14" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.2" fill="none"/>
-            <line x1="10.5" y1="2" x2="10.5" y2="14" stroke="currentColor" strokeWidth="1.2"/>
+            <rect x="2" y="2" width="12" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.2" fill="none"/>
+            <path d="M5 5.5l1.5 1.5 3-3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+            <line x1="5" y1="10" x2="11" y2="10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+            <line x1="5" y1="12.5" x2="9" y2="12.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
           </svg>
         </button>
         {/* Power button — triggers lock screen */}
