@@ -15,7 +15,7 @@ export function Sidebar({ state, dispatch, sidebarWidth }: SidebarProps) {
     return displayName(a.id, a.nick).localeCompare(displayName(b.id, b.nick));
   });
 
-  const onlineAgentsCount = agents.filter(agent => agent.online && !agent.isZombie).length;
+  const onlineAgentsCount = agents.filter(agent => agent.online).length;
 
   const getAgentDisplayName = (agent: Agent): string => {
     return displayName(agent.id, agent.nick);
