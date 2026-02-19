@@ -80,11 +80,29 @@ const PROXY_BACKENDS: Array<{
 ];
 
 /**
+ * Check if Ollama is running locally by pinging its models endpoint.
+ * Returns the first available model name, or null if Ollama is not running.
+ */
+async function detectOllama(baseUrl = 'http://localhost:11434'): Promise<string | null> {
+  try {
+    const res = await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(1000) });
+    if (!res.ok) return null;
+    const data = await res.json() as { models?: Array<{ name: string }> };
+    const models = data.models || [];
+    if (models.length === 0) return null;
+    return models[0].name;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Auto-detect and create a provider.
  *
  * Detection order:
  * 1. Check agentauth proxy for each backend (groq → openai → xai)
  * 2. Check keychain/file/env for each key
+ * 3. Check if Ollama is running locally
  *
  * Returns null if no provider is configured.
  */
@@ -109,6 +127,18 @@ export async function autoDetectProvider(): Promise<LLMProvider | null> {
     if (key) {
       return createLLMProvider({ provider, apiKey: key, defaultModel });
     }
+  }
+
+  // 3. Check for local Ollama instance
+  const ollamaModel = await detectOllama();
+  if (ollamaModel) {
+    console.log(`[llm] Ollama detected locally — using model: ${ollamaModel}`);
+    return new OpenAICompatibleProvider({
+      name: 'ollama',
+      apiKey: 'ollama',
+      baseUrl: 'http://localhost:11434/v1',
+      defaultModel: ollamaModel,
+    });
   }
 
   return null;
