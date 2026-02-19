@@ -1742,7 +1742,7 @@ app.get('*', (_req: Request, res: Response) => {
 
 // Dashboard WebSocket
 const MAX_WS_MESSAGE_SIZE = 64 * 1024;
-const MAX_CONNECTIONS_PER_IP = 10;
+const MAX_CONNECTIONS_PER_IP = parseInt(process.env.MAX_CONNECTIONS_PER_IP || '50', 10);
 const RATE_LIMIT_WINDOW_MS = 10000;
 const RATE_LIMIT_MAX_MESSAGES = 50;
 const ipConnectionCounts = new Map<string, number>();
