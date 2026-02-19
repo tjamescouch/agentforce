@@ -29,11 +29,13 @@ function TaskListItem({
   isSelected,
   onSelect,
   onStatusCycle,
+  onDelete,
 }: {
   task: Task;
   isSelected: boolean;
   onSelect: () => void;
   onStatusCycle: () => void;
+  onDelete: () => void;
 }) {
   return (
     <div
@@ -47,6 +49,17 @@ function TaskListItem({
         style={{ color: STATUS_COLORS[task.status] }}
       >
         {STATUS_LABELS[task.status]}
+      </button>
+      <button
+        className="task-delete-btn"
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete();
+        }}
+        title="Delete task"
+        aria-label="Delete task"
+      >
+        🗑
       </button>
       <div className="task-list-item-body">
         <span className="task-title">{task.title || 'Untitled'}</span>
@@ -281,12 +294,13 @@ export function TaskPanel({ state, dispatch, send, panelWidth }: TaskPanelProps)
             <div className="task-group">
               <div className="task-group-label">Active</div>
               {activeTasks.map(task => (
-                <TaskListItem
-                  key={task.id}
-                  task={task}
-                  isSelected={false}
-                  onSelect={() => dispatch({ type: 'SELECT_TASK', taskId: task.id })}
-                  onStatusCycle={() => handleStatusCycle(task)}
+            <TaskListItem
+              key={task.id}
+              task={task}
+              isSelected={false}
+              onSelect={() => dispatch({ type: 'SELECT_TASK', taskId: task.id })}
+              onStatusCycle={() => handleStatusCycle(task)}
+              onDelete={() => handleDelete(task.id)}
                 />
               ))}
             </div>
@@ -301,6 +315,7 @@ export function TaskPanel({ state, dispatch, send, panelWidth }: TaskPanelProps)
                   isSelected={false}
                   onSelect={() => dispatch({ type: 'SELECT_TASK', taskId: task.id })}
                   onStatusCycle={() => handleStatusCycle(task)}
+                  onDelete={() => handleDelete(task.id)}
                 />
               ))}
             </div>
@@ -315,6 +330,7 @@ export function TaskPanel({ state, dispatch, send, panelWidth }: TaskPanelProps)
                   isSelected={false}
                   onSelect={() => dispatch({ type: 'SELECT_TASK', taskId: task.id })}
                   onStatusCycle={() => handleStatusCycle(task)}
+                  onDelete={() => handleDelete(task.id)}
                 />
               ))}
             </div>

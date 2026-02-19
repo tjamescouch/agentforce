@@ -2983,6 +2983,20 @@ html[data-theme="dark"] .connection-steps {
   transition: opacity 0.15s ease;
 }
 
+/* Show list-row delete affordance on hover, keep always-visible in editor footer */
+.task-list-item .task-delete-btn {
+  opacity: 0;
+  margin-left: 6px;
+}
+
+.task-list-item:hover .task-delete-btn {
+  opacity: 0.6;
+}
+
+.task-list-item:hover .task-delete-btn:hover {
+  opacity: 1;
+}
+
 .task-delete-btn:hover {
   opacity: 1;
 }
