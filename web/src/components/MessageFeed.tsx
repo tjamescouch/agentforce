@@ -110,6 +110,7 @@ export function MessageFeed({ state, dispatch, send }: MessageFeedProps) {
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [inputHeight, setInputHeight] = useState(72);
   const isResizingInput = useRef(false);
+  const lastSentMessage = useRef<string | null>(null);
   const allMessages = state.messages[state.selectedChannel] || [];
   const messages = allMessages.filter(m => m.from !== '@server');
 
@@ -130,6 +131,14 @@ export function MessageFeed({ state, dispatch, send }: MessageFeedProps) {
     setIsAtBottom(true);
     messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
   }, [state.selectedChannel]);
+
+  // Rollback message to input if send fails
+  useEffect(() => {
+    if (state.sendError && lastSentMessage.current) {
+      setInput(lastSentMessage.current);
+      lastSentMessage.current = null;
+    }
+  }, [state.sendError]);
 
   const hasTypists = Object.keys(state.typingAgents).length > 0;
   useEffect(() => {
@@ -214,6 +223,8 @@ export function MessageFeed({ state, dispatch, send }: MessageFeedProps) {
       setTimeout(() => setSendError(null), 3000);
       return;
     }
+    // Save message before clearing (in case send fails and we need to restore it)
+    lastSentMessage.current = input;
     send({ type: 'send_message', data: { to: state.selectedChannel, content: input } });
     setInput('');
     setSendError(null);
@@ -271,7 +282,13 @@ export function MessageFeed({ state, dispatch, send }: MessageFeedProps) {
       <form className="input-bar" onSubmit={handleSend}>
         <textarea
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            setInput(e.target.value);
+            // Clear saved message when user manually types (they're composing a new message)
+            if (lastSentMessage.current && e.target.value !== lastSentMessage.current) {
+              lastSentMessage.current = null;
+            }
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
