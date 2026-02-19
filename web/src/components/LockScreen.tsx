@@ -18,14 +18,22 @@ export function LockScreen({ state, dispatch }: LockScreenProps) {
     return () => clearInterval(interval);
   }, []);
 
-  // Unlock on click, Enter, or Space
-  const lock = useCallback(() => {
-    setLocking(true);
-    setTimeout(() => {
-      dispatch({ type: 'SHOW_LOCK' });
-      setLocking(false);
-    }, 500);
+  const unlock = useCallback(() => {
+    dispatch({ type: 'HIDE_LOCK' });
   }, [dispatch]);
+
+  // Allow Esc / Enter / Space to dismiss
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!state.lockScreen) return;
+      if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        unlock();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [state.lockScreen, unlock]);
 
   if (!state.lockScreen) return null;
 
@@ -45,7 +53,7 @@ export function LockScreen({ state, dispatch }: LockScreenProps) {
   return (
     <div
       className={`lock-screen ${locking ? 'locking' : ''}`}
-      onClick={lock}
+      onClick={unlock}
       style={isDragging ? { transform: `translateY(${dragY}px)`, transition: 'none' } : undefined}
     >
       <div className="lock-screen-content">
@@ -60,7 +68,7 @@ export function LockScreen({ state, dispatch }: LockScreenProps) {
           <span className="lock-dot" />
           {agentCount} agent{agentCount !== 1 ? 's' : ''} online
         </div>
-        <div className="lock-hint">Click or press any key to lock</div>
+        <div className="lock-hint">Click or press Esc/Enter/Space to unlock</div>
       </div>
       <div className="lock-user">
         <div className="lock-avatar">
