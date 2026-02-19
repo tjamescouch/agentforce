@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import type { Agent } from '../types';
 
 interface DMWindowProps {
@@ -44,7 +45,7 @@ export function DMWindow({ agent, onClose }: DMWindowProps) {
     }
   };
 
-  return (
+  return createPortal(
     <>
       <div className="dm-backdrop" onClick={onClose} />
       <div ref={windowRef} className="dm-window">
@@ -69,6 +70,7 @@ export function DMWindow({ agent, onClose }: DMWindowProps) {
           <button onClick={handleSend}>Send</button>
         </div>
       </div>
-    </>
+    </>,
+    document.body
   );
 }
