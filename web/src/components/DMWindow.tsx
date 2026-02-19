@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import type { Agent } from '../types';
 
 interface DMWindowProps {
@@ -12,7 +12,6 @@ export function DMWindow({ agent, onClose }: DMWindowProps) {
   const windowRef = useRef<HTMLDivElement>(null);
   const dragData = useRef<{ offsetX: number; offsetY: number; dragging: boolean }>({ offsetX: 0, offsetY: 0, dragging: false });
 
-  // Drag handlers
   const onMouseDown = (e: React.MouseEvent) => {
     if (windowRef.current) {
       dragData.current = {
@@ -46,35 +45,30 @@ export function DMWindow({ agent, onClose }: DMWindowProps) {
   };
 
   return (
-    <dialog
-      ref={windowRef}
-      open
-      className="dm-window"
-      style={{ width: '300px', height: '400px', border: '1px solid black', backgroundColor: 'white', boxShadow: '2px 2px 10px rgba(0,0,0,0.3)', zIndex: 1000, position: 'fixed' }}
-      onMouseDown={e => e.stopPropagation()} // Prevent dialog drag unless header dragged
-    >
-      <div
-        className="dm-header"
-        style={{ cursor: 'move', backgroundColor: '#eee', padding: '5px' }}
-        onMouseDown={onMouseDown}
-      >
-        <span>DM: {agent.nick || agent.id}</span>
-        <button style={{ float: 'right' }} onClick={onClose}>X</button>
+    <>
+      <div className="dm-backdrop" onClick={onClose} />
+      <div ref={windowRef} className="dm-window">
+        <div className="dm-header" onMouseDown={onMouseDown}>
+          <span className="dm-title">DM: {agent.nick || agent.id}</span>
+          <button className="dm-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="dm-messages">
+          {messages.length === 0 && (
+            <div className="dm-empty">No messages yet. Say hi!</div>
+          )}
+          {messages.map((msg, idx) => <div key={idx} className="dm-message">{msg}</div>)}
+        </div>
+        <div className="dm-input">
+          <input
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleSend(); }}
+            placeholder="Type a message..."
+            autoFocus
+          />
+          <button onClick={handleSend}>Send</button>
+        </div>
       </div>
-
-      <div className="dm-messages" style={{ padding: '5px', height: '300px', overflowY: 'auto', borderBottom: '1px solid #ccc' }}>
-        {messages.map((msg, idx) => <div key={idx} className="dm-message">{msg}</div>)}
-      </div>
-
-      <div className="dm-input" style={{ padding: '5px' }}>
-        <input
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => { if(e.key === 'Enter') handleSend(); }}
-          style={{ width: '80%' }}
-        />
-        <button onClick={handleSend} style={{ width: '18%' }}>Send</button>
-      </div>
-    </dialog>
+    </>
   );
 }
