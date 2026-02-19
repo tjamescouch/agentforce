@@ -46,10 +46,12 @@ export function DMWindow({ agent, onClose }: DMWindowProps) {
   };
 
   return (
-    <div
+    <dialog
       ref={windowRef}
+      open
       className="dm-window"
-      style={{ position: 'fixed', top: '100px', left: '100px', width: '300px', height: '400px', border: '1px solid black', backgroundColor: 'white', boxShadow: '2px 2px 10px rgba(0,0,0,0.3)', zIndex: 1000 }}
+      style={{ width: '300px', height: '400px', border: '1px solid black', backgroundColor: 'white', boxShadow: '2px 2px 10px rgba(0,0,0,0.3)', zIndex: 1000, position: 'fixed' }}
+      onMouseDown={e => e.stopPropagation()} // Prevent dialog drag unless header dragged
     >
       <div
         className="dm-header"
@@ -73,6 +75,6 @@ export function DMWindow({ agent, onClose }: DMWindowProps) {
         />
         <button onClick={handleSend} style={{ width: '18%' }}>Send</button>
       </div>
-    </div>
+    </dialog>
   );
 }
