@@ -16,14 +16,36 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled:
       : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
 
     let reconnectDelay = 2000;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+    let lastPongAt = Date.now();
 
     function connect() {
       dispatch({ type: 'CONNECTING' });
+
+      // Ensure we only have one live socket + timers.
+      try { ws.current?.close(); } catch { /* ignore */ }
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+      if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
       ws.current = new WebSocket(wsUrl);
 
       ws.current.onopen = async () => {
         console.log('WebSocket connected');
         reconnectDelay = 2000;
+        lastPongAt = Date.now();
+
+        // Client-initiated heartbeat: helps with idle connection drops.
+        heartbeatTimer = setInterval(() => {
+          const socket = ws.current;
+          if (!socket || socket.readyState !== WebSocket.OPEN) return;
+          if (Date.now() - lastPongAt > 45000) {
+            console.warn('WebSocket heartbeat timeout; reconnecting');
+            socket.close();
+            return;
+          }
+          socket.send(JSON.stringify({ type: 'ping' }));
+        }, 15000);
+
         const storedNick = localStorage.getItem('dashboardNick');
         const identity = await getOrCreateIdentity();
         // Force lurk first so the server sees a mode *change* to participate,
@@ -43,6 +65,10 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled:
         const msg = JSON.parse(e.data);
         if (msg.type === 'ping') {
           ws.current!.send(JSON.stringify({ type: 'pong' }));
+          return;
+        }
+        if (msg.type === 'pong') {
+          lastPongAt = Date.now();
           return;
         }
         switch (msg.type) {
@@ -169,13 +195,35 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled:
         dispatch({ type: 'CONNECTION_ERROR', error: 'Connection failed \u2014 is the server running?' });
       };
 
-      ws.current.onclose = () => {
+      ws.current.onclose = (ev) => {
+        if (heartbeatTimer) {
+          clearInterval(heartbeatTimer);
+          heartbeatTimer = null;
+        }
         dispatch({ type: 'DISCONNECTED' });
-        if (!shouldReconnect.current) return;
-        setTimeout(() => {
-          if (shouldReconnect.current) connect();
-        }, reconnectDelay);
-        reconnectDelay = Math.min(reconnectDelay * 1.5, 15000);
+
+        const scheduleReconnect = () => {
+          if (reconnectTimer) return;
+          reconnectTimer = setTimeout(() => {
+            reconnectTimer = null;
+            connect();
+          }, reconnectDelay);
+          reconnectDelay = Math.min(reconnectDelay * 1.5, 15000);
+        };
+
+        // Avoid reconnect thrash when tab is hidden.
+        if (document.visibilityState === 'hidden') {
+          const onVis = () => {
+            if (document.visibilityState !== 'visible') return;
+            document.removeEventListener('visibilitychange', onVis);
+            scheduleReconnect();
+          };
+          document.addEventListener('visibilitychange', onVis);
+        } else {
+          scheduleReconnect();
+        }
+
+        console.warn('WebSocket closed', { code: ev.code, reason: ev.reason });
       };
 
       setSend(() => (msg: Record<string, unknown>) => {
@@ -187,7 +235,8 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled:
 
     connect();
     return () => {
-      shouldReconnect.current = false;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
       ws.current?.close();
     };
   }, [dispatch, enabled]);
