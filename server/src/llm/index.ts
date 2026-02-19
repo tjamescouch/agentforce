@@ -79,18 +79,43 @@ const PROXY_BACKENDS: Array<{
   { backend: 'xai', provider: 'xai', defaultModel: 'grok-2', secretName: 'XAI_API_KEY' },
 ];
 
+const EMBEDDING_MODEL_PATTERNS = ['embed', 'nomic-bert', 'rerank'];
+
+function isEmbeddingModel(model: { name: string; details?: { family?: string } }): boolean {
+  const name = model.name.toLowerCase();
+  const family = (model.details?.family || '').toLowerCase();
+  return EMBEDDING_MODEL_PATTERNS.some(p => name.includes(p) || family.includes(p));
+}
+
 /**
  * Check if Ollama is running locally by pinging its models endpoint.
- * Returns the first available model name, or null if Ollama is not running.
+ * Returns the first available chat model name, or null if Ollama is not running.
  */
 async function detectOllama(baseUrl = 'http://localhost:11434'): Promise<string | null> {
   try {
     const res = await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(1000) });
     if (!res.ok) return null;
-    const data = await res.json() as { models?: Array<{ name: string }> };
-    const models = data.models || [];
+    const data = await res.json() as { models?: Array<{ name: string; details?: { family?: string } }> };
+    const chatModels = (data.models || []).filter(m => !isEmbeddingModel(m));
+    if (chatModels.length === 0) return null;
+    return chatModels[0].name;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check if LM Studio is running locally (default port 1234).
+ * Returns the first available model name, or null if not running.
+ */
+async function detectLMStudio(baseUrl = 'http://localhost:1234'): Promise<string | null> {
+  try {
+    const res = await fetch(`${baseUrl}/v1/models`, { signal: AbortSignal.timeout(1000) });
+    if (!res.ok) return null;
+    const data = await res.json() as { data?: Array<{ id: string }> };
+    const models = data.data || [];
     if (models.length === 0) return null;
-    return models[0].name;
+    return models[0].id;
   } catch {
     return null;
   }
@@ -129,7 +154,19 @@ export async function autoDetectProvider(): Promise<LLMProvider | null> {
     }
   }
 
-  // 3. Check for local Ollama instance
+  // 3. Check for local LM Studio instance (port 1234)
+  const lmStudioModel = await detectLMStudio();
+  if (lmStudioModel) {
+    console.log(`[llm] LM Studio detected locally — using model: ${lmStudioModel}`);
+    return new OpenAICompatibleProvider({
+      name: 'lmstudio',
+      apiKey: 'lmstudio',
+      baseUrl: 'http://localhost:1234/v1',
+      defaultModel: lmStudioModel,
+    });
+  }
+
+  // 4. Check for local Ollama instance (port 11434)
   const ollamaModel = await detectOllama();
   if (ollamaModel) {
     console.log(`[llm] Ollama detected locally — using model: ${ollamaModel}`);
