@@ -4,10 +4,12 @@ import { getOrCreateIdentity } from '../identity';
 
 export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled: boolean = true): WsSendFn {
   const ws = useRef<WebSocket | null>(null);
+  const shouldReconnect = useRef(true);
   const [send, setSend] = useState<WsSendFn>(() => () => {});
 
   useEffect(() => {
     if (!enabled) return;
+    shouldReconnect.current = true;
 
     const wsUrl = import.meta.env.DEV
       ? 'ws://localhost:3000/ws'
@@ -169,7 +171,10 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled:
 
       ws.current.onclose = () => {
         dispatch({ type: 'DISCONNECTED' });
-        setTimeout(connect, reconnectDelay);
+        if (!shouldReconnect.current) return;
+        setTimeout(() => {
+          if (shouldReconnect.current) connect();
+        }, reconnectDelay);
         reconnectDelay = Math.min(reconnectDelay * 1.5, 15000);
       };
 
@@ -181,7 +186,10 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled:
     }
 
     connect();
-    return () => ws.current?.close();
+    return () => {
+      shouldReconnect.current = false;
+      ws.current?.close();
+    };
   }, [dispatch, enabled]);
 
   return send;
