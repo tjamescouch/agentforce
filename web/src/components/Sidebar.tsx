@@ -8,10 +8,13 @@ interface SidebarProps {
 }
 
 export function Sidebar({ state, dispatch, sidebarWidth }: SidebarProps) {
+  // Filter out zombies from online count
   const agents = Object.values(state.agents).sort((a, b) => {
     if (a.online !== b.online) return b.online ? 1 : -1;
     return displayName(a.id, a.nick).localeCompare(displayName(b.id, b.nick));
   });
+
+  const onlineAgentsCount = agents.filter(agent => agent.online && !agent.isZombie).length;
 
   const getAgentDisplayName = (agent: Agent): string => {
     return displayName(agent.id, agent.nick);
@@ -22,7 +25,7 @@ export function Sidebar({ state, dispatch, sidebarWidth }: SidebarProps) {
   return (
     <div className="sidebar" style={{ width: sidebarWidth }}>
       <div className="section">
-        <h3>AGENTS ({agents.length})</h3>
+        <h3>AGENTS (Online: {onlineAgentsCount})</h3>
         <div className="list">
           {agents.map(agent => (
             <div
