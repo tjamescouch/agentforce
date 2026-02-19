@@ -47,18 +47,26 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled:
         }, 15000);
 
         const storedNick = localStorage.getItem('dashboardNick');
-        const identity = await getOrCreateIdentity();
-        // Force lurk first so the server sees a mode *change* to participate,
-        // which triggers per-session agentchat WS creation
-        ws.current!.send(JSON.stringify({ type: 'set_mode', data: { mode: 'lurk' } }));
-        ws.current!.send(JSON.stringify({
-          type: 'set_mode',
-          data: {
-            mode: 'participate',
-            nick: storedNick || undefined,
-            identity: identity || undefined
-          }
-        }));
+        const identity = await getOrCreateIdentity().catch(err => {
+          console.error('Failed to generate identity:', err);
+          return undefined;
+        });
+        if (!identity) {
+          // Fall back to lurk mode if crypto fails
+          ws.current!.send(JSON.stringify({ type: 'set_mode', data: { mode: 'lurk' } }));
+        } else {
+          // Force lurk first so the server sees a mode *change* to participate,
+          // which triggers per-session agentchat WS creation
+          ws.current!.send(JSON.stringify({ type: 'set_mode', data: { mode: 'lurk' } }));
+          ws.current!.send(JSON.stringify({
+            type: 'set_mode',
+            data: {
+              mode: 'participate',
+              nick: storedNick || undefined,
+              identity
+            }
+          }));
+        }
       };
 
       ws.current.onmessage = (e: MessageEvent) => {
