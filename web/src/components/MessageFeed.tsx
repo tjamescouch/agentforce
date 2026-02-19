@@ -185,9 +185,23 @@ export function MessageFeed({ state, dispatch, send }: MessageFeedProps) {
 
   const handleSend = (e: FormEvent | React.KeyboardEvent) => {
     e.preventDefault();
-    if (!input.trim()) return;
-    if (input.trim().startsWith('/nick ')) {
-      const newNick = input.trim().slice(6).trim();
+    const trimmed = input.trim();
+    if (!trimmed) return;
+
+    // Guardrail: encourage using the Task list.
+    // If user posts CLAIM/OSCAR MIKE with no selected task, prompt.
+    // This is intentionally non-blocking (OK sends anyway).
+    const firstToken = trimmed.split(/\s+/)[0]?.toUpperCase();
+    const needsTaskContext = firstToken === 'CLAIM:' || firstToken === 'CLAIM' || firstToken === 'OSCAR';
+    if (needsTaskContext && !state.selectedTaskId) {
+      const proceed = window.confirm(
+        'No task selected. Open TASKS and select/create a task before posting CLAIM/OSCAR MIKE?\n\nPress Cancel to go select a task, or OK to send anyway.'
+      );
+      if (!proceed) return;
+    }
+
+    if (trimmed.startsWith('/nick ')) {
+      const newNick = trimmed.slice(6).trim();
       if (newNick) {
         send({ type: 'set_nick', data: { nick: newNick } });
         localStorage.setItem('dashboardNick', newNick);
