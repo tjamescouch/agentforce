@@ -3050,9 +3050,9 @@ html[data-theme="dark"] .connection-steps {
 .dm-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(4px);
-  z-index: 999;
+  z-index: 10000;
 }
 
 .dm-window {
@@ -3064,13 +3064,11 @@ html[data-theme="dark"] .connection-steps {
   height: 480px;
   display: flex;
   flex-direction: column;
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--glass-border);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-glass);
-  z-index: 1000;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.4);
+  z-index: 10001;
   overflow: hidden;
 }
 
