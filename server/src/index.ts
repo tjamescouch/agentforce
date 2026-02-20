@@ -1800,6 +1800,9 @@ wss.on('connection', (ws, req) => {
       const msg: DashboardMessage = JSON.parse(data.toString());
       if (msg.type === 'pong') {
         client.lastPing = Date.now();
+      } else if (msg.type === 'ping') {
+        client.lastPing = Date.now();
+        client.ws.send(JSON.stringify({ type: 'pong' }));
       } else {
         handleDashboardMessage(client, msg);
       }
