@@ -62,6 +62,7 @@ export function TopBar({ state, dispatch, send, theme, setTheme }: TopBarProps) 
           {themeIcon}
         </button>
         <span className="logo">agentforce</span>
+        <span className="topbar-version">v1.1.2</span>
         <span className={`status ${state.connected ? 'online' : 'offline'}`}>
           {state.connected ? 'Connected' : 'Disconnected'}
         </span>
