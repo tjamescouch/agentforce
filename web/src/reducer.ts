@@ -294,7 +294,10 @@ export function reducer(state: DashboardState, action: DashboardAction): Dashboa
       const existing = state.dmThreads[peerId] || [];
       const isDupe = existing.some(m =>
         (m.id && m.id === action.data.id) ||
-        (m.ts === action.data.ts && m.from === action.data.from && m.content === action.data.content)
+        (m.ts === action.data.ts && m.from === action.data.from && m.content === action.data.content) ||
+        // Catch optimistic→server echo duplicates: same sender+content within 10s window
+        (m.from === action.data.from && m.content === action.data.content &&
+         Math.abs(m.ts - action.data.ts) < 10000)
       );
       if (isDupe) return state;
       const newThreads = {
