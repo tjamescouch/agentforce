@@ -105,6 +105,9 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled:
           case 'typing':
             dispatch({ type: 'TYPING', data: msg.data });
             break;
+          case 'dm_message':
+            dispatch({ type: 'DM_MESSAGE', data: msg.data });
+            break;
           case 'mode_changed':
             dispatch({ type: 'SET_MODE', mode: msg.data.mode });
             break;

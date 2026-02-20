@@ -81,6 +81,8 @@ export interface DashboardState {
   agents: Record<string, Agent>;
   channels: Record<string, Channel>;
   messages: Record<string, Message[]>;
+  dmThreads: Record<string, Message[]>;
+  dmUnread: Record<string, number>;
   selectedChannel: string;
   selectedAgent: Agent | null;
   rightPanel: string;
@@ -144,7 +146,9 @@ export type DashboardAction =
   | { type: 'DELETE_TASK'; taskId: string }
   | { type: 'SELECT_TASK'; taskId: string | null }
   | { type: 'TOGGLE_TASK_PANEL' }
-  | { type: 'REORDER_TASKS'; taskIds: string[] };
+  | { type: 'REORDER_TASKS'; taskIds: string[] }
+  | { type: 'DM_MESSAGE'; data: Message }
+  | { type: 'CLEAR_DM_UNREAD'; agentId: string };
 
 export interface StateSyncPayload {
   agents: Agent[];

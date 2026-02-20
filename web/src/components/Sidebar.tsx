@@ -58,6 +58,9 @@ export function Sidebar({ state, dispatch, sidebarWidth }: SidebarProps) {
                   </span>
                 )}
               </span>
+              {state.dmUnread[agent.id] > 0 && (
+                <span className="unread-badge">{state.dmUnread[agent.id]}</span>
+              )}
               {agent.verified
                 ? <span className="verified-badge" title="Verified (allowlisted)">&#x2713;</span>
                 : <span className="unverified-badge" title="Unverified identity">&#x26A0;</span>

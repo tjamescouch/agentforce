@@ -983,7 +983,26 @@ function handlePerSessionMessage(client: DashboardClient, msg: AgentChatMsg): vo
           // Not JSON, treat as regular message
         }
       }
-      // Feed into global state so all dashboard clients see it via broadcast
+      // Route DMs privately to the recipient's session only
+      if (msg.to && msg.to.startsWith('@')) {
+        const senderName = (msg as any).from_name || msg.name;
+        if (msg.from && senderName && !agentNameOverrides[msg.from]) {
+          agentNameOverrides[msg.from] = senderName;
+        }
+        const dmMessage = {
+          id: msg.id || `${msg.ts}-${msg.from}-${(msg.content || '').slice(0, 50)}`,
+          from: msg.from!,
+          fromNick: getAgentName(msg.from!, senderName),
+          to: msg.to,
+          content: msg.content!,
+          ts: msg.ts || Date.now(),
+        };
+        if (client.ws.readyState === WebSocket.OPEN) {
+          client.ws.send(JSON.stringify({ type: 'dm_message', data: dmMessage }));
+        }
+        break;
+      }
+      // Feed channel messages into global state so all dashboard clients see it via broadcast
       if (msg.to) {
         handleIncomingMessage(msg);
       }
