@@ -105,7 +105,6 @@ export function DMWindow({ agent, onClose }: DMWindowProps) {
             placeholder="Type a message..."
             autoFocus
           />
-          <button onClick={handleSend}>Send</button>
         </div>
       </div>
     </>,
