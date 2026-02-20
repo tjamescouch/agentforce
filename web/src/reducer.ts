@@ -7,6 +7,7 @@ export const savedMode = typeof window !== 'undefined' ? localStorage.getItem('d
 export const savedSidebarOpen = typeof window !== 'undefined' ? localStorage.getItem('sidebarOpen') === 'true' : false;
 export const savedNick = typeof window !== 'undefined' ? localStorage.getItem('dashboardNick') : null;
 export const savedRightPanelOpen = typeof window !== 'undefined' ? (localStorage.getItem('rightPanelOpen') ?? 'true') === 'true' : true;
+export const savedRightPanelWidth = typeof window !== 'undefined' ? Number(localStorage.getItem('rightPanelWidth') || '360') : 360;
 
 const loadPersistedTasks = (): Task[] => {
   try {
@@ -74,6 +75,7 @@ export const initialState: DashboardState = {
   selectedChannel: '#general',
   selectedAgent: null,
   rightPanel: 'detail',
+  rightPanelWidth: savedRightPanelWidth,
   dashboardAgent: null,
   unreadCounts: {},
   activityCounts: {},
@@ -167,6 +169,10 @@ export function reducer(state: DashboardState, action: DashboardAction): Dashboa
       return { ...state, selectedAgent: action.agent, rightPanel: 'detail', rightPanelOpen: true };
     case 'SET_RIGHT_PANEL':
       return { ...state, rightPanel: action.panel };
++    case 'SET_RIGHT_PANEL_WIDTH': {
++      if (typeof window !== 'undefined') localStorage.setItem('rightPanelWidth', String(action.width));
++      return { ...state, rightPanelWidth: action.width };
++    }
     case 'TYPING': {
       const key = `${action.data.from}:${action.data.channel}`;
       return { ...state, typingAgents: { ...state.typingAgents, [key]: Date.now() } };
