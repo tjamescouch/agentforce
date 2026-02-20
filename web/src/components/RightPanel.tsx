@@ -105,7 +105,7 @@ export function RightPanel({ state, dispatch, send, panelWidth }: RightPanelProp
     // optimistic update
     dispatch({ type: 'DM_MESSAGE', data: msg });
     // send to server (server should route to recipient and emit dm_message)
-    send({ type: 'message', data: { to: agent.id, content: text } });
+    send({ type: 'send_message', data: { to: agent.id, content: text } });
     setDmInput('');
   };
 
