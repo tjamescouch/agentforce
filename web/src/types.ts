@@ -25,6 +25,7 @@ export interface Agent {
   event?: string;
   verified?: boolean;
   isDashboard?: boolean;
+  publicKey?: string;
 }
 
 export interface Channel {
@@ -151,7 +152,8 @@ export type DashboardAction =
   | { type: 'REORDER_TASKS'; taskIds: string[] }
   | { type: 'SET_RIGHT_PANEL_WIDTH'; width: number }
   | { type: 'DM_MESSAGE'; data: Message }
-  | { type: 'CLEAR_DM_UNREAD'; agentId: string };
+  | { type: 'CLEAR_DM_UNREAD'; agentId: string }
+  | { type: 'READ_RECEIPT'; data: { from: string; to: string; messageId?: string } };
 
 export interface StateSyncPayload {
   agents: Agent[];

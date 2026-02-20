@@ -2,6 +2,8 @@ import React, { useRef, useEffect, useContext } from 'react';
 import { createPortal } from 'react-dom';
 import type { Agent } from '../types';
 import { DashboardContext } from '../context';
+import { getStoredIdentity } from '../identity';
+import { sodiumReady, deriveSharedSecret, encrypt, toBase64 } from '../crypto';
 
 interface DMWindowProps {
   agent: Agent;
@@ -77,8 +79,31 @@ export function DMWindow({ agent, onClose }: DMWindowProps) {
       ts: Date.now(),
     };
     ctx.dispatch({ type: 'DM_MESSAGE', data: msg });
-    // agent.id already includes the '@' prefix — don't double it
-    ctx.send({ type: 'send_message', data: { to: agent.id, content: text } });
+
+    // Attempt E2E encryption if both sides have keys
+    (async () => {
+      try {
+        const our = getStoredIdentity();
+        const their = ctx.state.agents[agent.id];
+        if (our?.publicKey && their && (their as any).publicKey) {
+          await sodiumReady();
+          const shared = await deriveSharedSecret(our.secretKey, (their as any).publicKey);
+          const enc = await encrypt(shared, new TextEncoder().encode(text));
+          const payload = {
+            encrypted: true,
+            cipher: 'chacha20-poly1305',
+            nonce: toBase64(enc.nonce),
+            ciphertext: toBase64(enc.ciphertext),
+            pub: our.publicKey
+          };
+          ctx.send({ type: 'send_message', data: { to: agent.id, content: JSON.stringify(payload) } });
+          return;
+        }
+      } catch {
+        // Encryption failed — fall through to plaintext
+      }
+      ctx.send({ type: 'send_message', data: { to: agent.id, content: text } });
+    })();
     setInput('');
   };
 
@@ -93,7 +118,7 @@ export function DMWindow({ agent, onClose }: DMWindowProps) {
       <div className="dm-backdrop" onClick={onClose} />
       <div ref={windowRef} className="dm-window">
         <div className="dm-header" onMouseDown={onMouseDown}>
-          <span className="dm-title">{agent.nick || agent.id}</span>
+          <span className="dm-title">{agent.nick || agent.id}{(agent as any).publicKey ? <span className="encrypted-badge" title="E2E Encrypted"> 🔒</span> : null}</span>
           <button className="dm-close" onClick={onClose}>&times;</button>
         </div>
         <div className="dm-messages">

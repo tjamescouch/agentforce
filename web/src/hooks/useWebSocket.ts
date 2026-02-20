@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import type { DashboardAction, WsSendFn } from '../types';
-import { getOrCreateIdentity } from '../identity';
+import { getOrCreateIdentity, getStoredIdentity } from '../identity';
+import { sodiumReady, deriveSharedSecret, fromBase64, decrypt } from '../crypto';
 
 export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled: boolean = true): WsSendFn {
   const ws = useRef<WebSocket | null>(null);
@@ -106,7 +107,33 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled:
             dispatch({ type: 'TYPING', data: msg.data });
             break;
           case 'dm_message':
-            dispatch({ type: 'DM_MESSAGE', data: msg.data });
+            // Attempt E2E decryption if the message is an encrypted envelope
+            (async () => {
+              try {
+                if (msg.data && typeof msg.data.content === 'string') {
+                  const parsed = JSON.parse(msg.data.content);
+                  if (parsed?.encrypted && parsed.cipher === 'chacha20-poly1305' && parsed.pub && parsed.nonce && parsed.ciphertext) {
+                    const our = getStoredIdentity();
+                    if (our?.secretKey) {
+                      await sodiumReady();
+                      const shared = await deriveSharedSecret(our.secretKey, parsed.pub);
+                      const pt = await decrypt(shared, fromBase64(parsed.nonce), fromBase64(parsed.ciphertext));
+                      if (pt) {
+                        msg.data.content = new TextDecoder().decode(pt);
+                        msg.data.encrypted = true;
+                      }
+                    }
+                  }
+                }
+              } catch {
+                // Decrypt failed — deliver raw content
+              } finally {
+                dispatch({ type: 'DM_MESSAGE', data: msg.data });
+              }
+            })();
+            break;
+          case 'read_receipt':
+            dispatch({ type: 'READ_RECEIPT', data: msg.data });
             break;
           case 'mode_changed':
             dispatch({ type: 'SET_MODE', mode: msg.data.mode });
