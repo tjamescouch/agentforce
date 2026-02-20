@@ -169,10 +169,10 @@ export function reducer(state: DashboardState, action: DashboardAction): Dashboa
       return { ...state, selectedAgent: action.agent, rightPanel: 'detail', rightPanelOpen: true };
     case 'SET_RIGHT_PANEL':
       return { ...state, rightPanel: action.panel };
-+    case 'SET_RIGHT_PANEL_WIDTH': {
-+      if (typeof window !== 'undefined') localStorage.setItem('rightPanelWidth', String(action.width));
-+      return { ...state, rightPanelWidth: action.width };
-+    }
+    case 'SET_RIGHT_PANEL_WIDTH': {
+      if (typeof window !== 'undefined') localStorage.setItem('rightPanelWidth', String(action.width));
+      return { ...state, rightPanelWidth: action.width };
+    }
     case 'TYPING': {
       const key = `${action.data.from}:${action.data.channel}`;
       return { ...state, typingAgents: { ...state.typingAgents, [key]: Date.now() } };
