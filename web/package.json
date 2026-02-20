@@ -10,8 +10,6 @@
   },
   "dependencies": {
     "dompurify": "^3.0.8",
-    "libsodium-wrappers": "^0.7.9",
-    "libsodium-wrappers-sumo": "^0.8.2",
     "marked": "^12.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
