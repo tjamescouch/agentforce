@@ -1,12 +1,75 @@
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
+// ============ Stream Marker Emoji ============
+
+const MARKER_EMOJI: Record<string, string> = {
+  // Emotions
+  joy: '☀️', sadness: '🌧️', anger: '⚡', fear: '🌊',
+  surprise: '✨', disgust: '🍂', confidence: '💎', uncertainty: '🌀',
+  excitement: '🔥', calm: '🍃', urgency: '⏩', reverence: '🙏',
+  // Thinking
+  thinking: '💭', think: '💡', relax: '🌙',
+};
+
+/**
+ * Replace @@marker@@ patterns with tasteful emoji.
+ * Handles both key:value pairs (@@joy:0.6,calm:0.3@@) and
+ * function-form markers (@@thinking(0.7)@@, @@think@@, @@relax@@).
+ * Unknown markers get 🧠. Control markers (model-change, ref, etc) are stripped silently.
+ */
+function replaceMarkers(content: string): string {
+  const CONTROL = /^(model-change|ref|unref|importance|ctrl|mem)/;
+
+  return content.replace(/@@([^@]+)@@/g, (_match, payload: string) => {
+    const trimmed = payload.trim();
+
+    // Control markers: strip entirely
+    if (CONTROL.test(trimmed)) return '';
+
+    // Function-form: @@thinking(0.7)@@ or @@think@@ or @@relax@@
+    const fnMatch = trimmed.match(/^(\w+)(?:\(([^)]*)\))?$/);
+    if (fnMatch) {
+      const name = fnMatch[1].toLowerCase();
+      // thinking with value — indicate direction
+      if (name === 'thinking' && fnMatch[2]) {
+        const val = parseFloat(fnMatch[2]);
+        if (!isNaN(val)) return val >= 0.5 ? '💡' : '🌙';
+      }
+      if (MARKER_EMOJI[name]) return MARKER_EMOJI[name];
+    }
+
+    // Key:value pairs: @@joy:0.6,confidence:0.8@@
+    const pairs = trimmed.split(',');
+    let bestKey = '';
+    let bestVal = -1;
+    let valid = false;
+    for (const pair of pairs) {
+      const colonIdx = pair.indexOf(':');
+      if (colonIdx === -1) continue;
+      const key = pair.slice(0, colonIdx).trim().toLowerCase();
+      const val = parseFloat(pair.slice(colonIdx + 1).trim());
+      if (key && !isNaN(val)) {
+        valid = true;
+        if (val > bestVal) { bestKey = key; bestVal = val; }
+      }
+    }
+    if (valid && bestKey) {
+      return MARKER_EMOJI[bestKey] || '🧠';
+    }
+
+    // Unknown marker
+    return '🧠';
+  });
+}
+
 // ============ Markdown ============
 
 marked.setOptions({ breaks: true });
 
 export function renderMarkdown(content: string): string {
-  const raw = marked.parse(content);
+  const cleaned = replaceMarkers(content);
+  const raw = marked.parse(cleaned);
   const html = typeof raw === 'string' ? raw : '';
   return DOMPurify.sanitize(html);
 }
