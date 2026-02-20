@@ -1,0 +1,26 @@
+{
+  "name": "agentforce",
+  "version": "1.1.2",
+  "description": "Enterprise dashboard for AgentChat - chat, channels, agents, file transfer, network graph",
+  "scripts": {
+    "test:dm-e2e": "node tools/dm_e2e_test.js",
+    "start": "cd server && npm start",
+    "dev": "concurrently \"cd server && npm run dev\" \"cd web && npm run dev\"",
+    "dev:server": "cd server && npm run dev",
+    "dev:web": "cd web && npm run dev",
+    "build": "cd web && npm run build",
+    "build:server": "cd server && npm run build",
+    "typecheck": "cd web && npm run typecheck && cd ../server && npm run typecheck",
+    "install:all": "cd server && npm install && cd ../web && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "libsodium-wrappers": "^0.8.2",
+    "ws": "^8.19.0"
+  }
+}
