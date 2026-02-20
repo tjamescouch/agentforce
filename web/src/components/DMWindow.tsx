@@ -1,37 +1,41 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useContext } from 'react';
 import { createPortal } from 'react-dom';
 import type { Agent } from '../types';
-
-interface DMMessage {
-  text: string;
-  from: string;
-  time: Date;
-}
+import { DashboardContext } from '../context';
 
 interface DMWindowProps {
   agent: Agent;
   onClose: () => void;
 }
 
-function formatTime(d: Date): string {
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+function formatTime(ts: number): string {
+  return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 export function DMWindow({ agent, onClose }: DMWindowProps) {
-  const [messages, setMessages] = useState<DMMessage[]>([]);
-  const [input, setInput] = useState('');
+  const ctx = useContext(DashboardContext);
+  const [input, setInput] = React.useState('');
   const windowRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const dragData = useRef<{ offsetX: number; offsetY: number; dragging: boolean }>({ offsetX: 0, offsetY: 0, dragging: false });
 
+  const messages = ctx?.state.dmThreads[agent.id] || [];
+  const myId = ctx?.state.dashboardAgent?.id;
+
+  // Clear unread on open and when new messages arrive
+  useEffect(() => {
+    if (ctx && ctx.state.dmUnread[agent.id]) {
+      ctx.dispatch({ type: 'CLEAR_DM_UNREAD', agentId: agent.id });
+    }
+  }, [agent.id, messages.length]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages.length]);
 
   const onMouseDown = (e: React.MouseEvent) => {
     if (windowRef.current) {
       const rect = windowRef.current.getBoundingClientRect();
-      // Remove transform centering on first drag — pin to actual screen position
       if (windowRef.current.style.transform !== 'none') {
         windowRef.current.style.left = `${rect.left}px`;
         windowRef.current.style.top = `${rect.top}px`;
@@ -61,10 +65,15 @@ export function DMWindow({ agent, onClose }: DMWindowProps) {
   };
 
   const handleSend = () => {
-    if (input.trim()) {
-      setMessages([...messages, { text: input.trim(), from: 'You', time: new Date() }]);
-      setInput('');
-    }
+    if (!input.trim() || !ctx) return;
+    ctx.send({ type: 'send_message', data: { to: `@${agent.id}`, content: input.trim() } });
+    setInput('');
+  };
+
+  const getNick = (fromId: string): string => {
+    if (fromId === myId) return ctx?.state.dashboardAgent?.nick || 'You';
+    const a = ctx?.state.agents[fromId];
+    return a?.nick || fromId;
   };
 
   return createPortal(
@@ -81,9 +90,9 @@ export function DMWindow({ agent, onClose }: DMWindowProps) {
           )}
           {messages.map((msg, idx) => (
             <div key={idx} className="dm-message">
-              <span className="dm-msg-time">{formatTime(msg.time)}</span>
-              <span className="dm-msg-from">{msg.from}</span>
-              <span>{msg.text}</span>
+              <span className="dm-msg-time">{formatTime(msg.ts)}</span>
+              <span className="dm-msg-from">{getNick(msg.from)}</span>
+              <span>{msg.content}</span>
             </div>
           ))}
           <div ref={messagesEndRef} />

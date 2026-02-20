@@ -78,6 +78,8 @@ export const initialState: DashboardState = {
   unreadCounts: {},
   activityCounts: {},
   typingAgents: {},
+  dmThreads: {},
+  dmUnread: {},
   transfers: {},
   sendModal: null,
   saveModal: null,
@@ -276,6 +278,31 @@ export function reducer(state: DashboardState, action: DashboardAction): Dashboa
       const reordered = action.taskIds.map(id => taskMap.get(id)).filter(Boolean) as Task[];
       persistTasks(reordered);
       return { ...state, tasks: reordered };
+    }
+    case 'DM_MESSAGE': {
+      // Key DM threads by the other party's agent ID
+      const myId = state.dashboardAgent?.id;
+      const peerId = action.data.from === myId ? action.data.to.replace(/^@/, '') : action.data.from;
+      const existing = state.dmThreads[peerId] || [];
+      const isDupe = existing.some(m =>
+        (m.id && m.id === action.data.id) ||
+        (m.ts === action.data.ts && m.from === action.data.from && m.content === action.data.content)
+      );
+      if (isDupe) return state;
+      const newThreads = {
+        ...state.dmThreads,
+        [peerId]: [...existing, action.data].slice(-200)
+      };
+      // Increment unread if the message is from someone else
+      const newDmUnread = action.data.from !== myId
+        ? { ...state.dmUnread, [peerId]: (state.dmUnread[peerId] || 0) + 1 }
+        : state.dmUnread;
+      return { ...state, dmThreads: newThreads, dmUnread: newDmUnread };
+    }
+    case 'CLEAR_DM_UNREAD': {
+      const cleared = { ...state.dmUnread };
+      delete cleared[action.agentId];
+      return { ...state, dmUnread: cleared };
     }
     default:
       return state;
