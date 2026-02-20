@@ -86,6 +86,8 @@ export interface DashboardState {
   selectedChannel: string;
   selectedAgent: Agent | null;
   rightPanel: string;
+  // width in pixels for the right-hand details panel
+  rightPanelWidth: number;
   dashboardAgent: DashboardAgent | null;
   unreadCounts: Record<string, number>;
   activityCounts: Record<string, number>;
@@ -147,6 +149,7 @@ export type DashboardAction =
   | { type: 'SELECT_TASK'; taskId: string | null }
   | { type: 'TOGGLE_TASK_PANEL' }
   | { type: 'REORDER_TASKS'; taskIds: string[] }
+  | { type: 'SET_RIGHT_PANEL_WIDTH'; width: number }
   | { type: 'DM_MESSAGE'; data: Message }
   | { type: 'CLEAR_DM_UNREAD'; agentId: string };
 
