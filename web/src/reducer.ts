@@ -315,6 +315,23 @@ export function reducer(state: DashboardState, action: DashboardAction): Dashboa
       delete cleared[action.agentId];
       return { ...state, dmUnread: cleared };
     }
+    case 'READ_RECEIPT': {
+      const { from } = action.data as { from: string; to: string; messageId?: string };
+      if (!from || !state.dashboardAgent?.id) return state;
+      const thread = state.dmThreads[from];
+      if (!thread) return state;
+      const ourId = state.dashboardAgent.id;
+      let changed = false;
+      const updated = thread.map(m => {
+        if ((m.from === ourId || m.from === `@${ourId}`) && !(m as any).read) {
+          changed = true;
+          return { ...m, read: true };
+        }
+        return m;
+      });
+      if (!changed) return state;
+      return { ...state, dmThreads: { ...state.dmThreads, [from]: updated } };
+    }
     default:
       return state;
   }

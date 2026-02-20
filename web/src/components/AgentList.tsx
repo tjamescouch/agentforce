@@ -40,6 +40,7 @@ export function AgentList({ state, dispatch, sidebarWidth }: AgentListProps) {
             <span className={`dot ${agent.online ? 'online' : 'offline'}`} />
             <span className="agent-name-block">
               {agent.nick}
+              {(agent as any).publicKey ? <span title="E2E encryption supported" className="lock-icon">🔒</span> : null}
             </span>
           </div>
         ))}

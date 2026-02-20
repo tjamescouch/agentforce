@@ -777,11 +777,40 @@ function handleAgentChatMessage(msg: AgentChatMsg): void {
       break;
 
     case 'TYPING':
-      broadcastToDashboards({
-        type: 'typing',
-        data: { from: msg.from, from_name: (msg as any).from_name, channel: msg.channel }
-      });
+      // DM typing: route only to recipient's dashboard sessions
+      if (msg.to && typeof msg.to === 'string' && msg.to.startsWith('@')) {
+        const recipientId = msg.to.replace(/^@/, '');
+        dashboardClients.forEach(dc => {
+          if (dc.ws.readyState !== WebSocket.OPEN) return;
+          if (dc.agentId === recipientId || dc.agentId === msg.from) {
+            try { dc.ws.send(JSON.stringify({ type: 'typing', data: { from: msg.from, from_name: (msg as any).from_name || msg.name, channel: msg.to } })); } catch { /* ignore */ }
+          }
+        });
+      } else {
+        broadcastToDashboards({
+          type: 'typing',
+          data: { from: msg.from, from_name: (msg as any).from_name, channel: msg.channel || msg.to }
+        });
+      }
       break;
+
+    case 'READ': {
+      // Route read receipts for DMs to the relevant dashboard sessions
+      if (msg.to && typeof msg.to === 'string' && msg.to.startsWith('@')) {
+        const recipientId = msg.to.replace(/^@/, '');
+        const payload = {
+          type: 'read_receipt',
+          data: { from: msg.from, to: msg.to, messageId: (msg as any).id || (msg as any).messageId }
+        };
+        dashboardClients.forEach(dc => {
+          if (dc.ws.readyState !== WebSocket.OPEN) return;
+          if (dc.agentId === recipientId || dc.agentId === msg.from) {
+            try { dc.ws.send(JSON.stringify(payload)); } catch { /* ignore */ }
+          }
+        });
+      }
+      break;
+    }
 
     case 'PONG':
       break;
@@ -1332,7 +1361,17 @@ function broadcastToDashboards(msg: { type: string; data?: unknown }): void {
 
 function getStateSnapshot(): Record<string, unknown> {
   return {
-    agents: [...state.agents.values()].map(a => ({ ...a, channels: [...a.channels] })),
+    agents: [...state.agents.values()].map(a => {
+      // Expose publicKey (base64) if the agent has a dashboard session with an identity
+      let publicKey: string | undefined;
+      for (const dc of dashboardClients) {
+        if (dc.agentId === a.id && dc.identity?.publicKey) {
+          try { publicKey = encodeBase64(dc.identity.publicKey); } catch { /* ignore */ }
+          break;
+        }
+      }
+      return { ...a, channels: [...a.channels], publicKey };
+    }),
     channels: [...state.channels.values()].map(c => ({
       name: c.name,
       members: [...c.members],
@@ -1375,6 +1414,27 @@ function handleDashboardMessage(client: DashboardClient, msg: DashboardMessage):
         client.ws.send(JSON.stringify({ type: 'message_sent', data: { success: true } }));
       }
       break;
+
+    case 'typing': {
+      // Forward typing indicator from dashboard to AgentChat
+      const typeTo = (msg.data as any)?.to;
+      if (!client.agentChatWs || client.agentChatWs.readyState !== WebSocket.OPEN) break;
+      if (typeTo && typeof typeTo === 'string') {
+        client.agentChatWs.send(JSON.stringify({ type: 'TYPING', to: typeTo }));
+      }
+      break;
+    }
+
+    case 'read': {
+      // Forward read receipt from dashboard to AgentChat
+      const readTo = (msg.data as any)?.to;
+      const readId = (msg.data as any)?.id;
+      if (!client.agentChatWs || client.agentChatWs.readyState !== WebSocket.OPEN) break;
+      if (readTo && typeof readTo === 'string') {
+        client.agentChatWs.send(JSON.stringify({ type: 'READ', to: readTo, id: readId }));
+      }
+      break;
+    }
 
     case 'set_mode': {
       const { mode: newMode, nick: preferredNick, identity: browserIdentity } = msg.data as {
