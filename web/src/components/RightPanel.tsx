@@ -19,10 +19,45 @@ export function RightPanel({ state, dispatch, send, panelWidth }: RightPanelProp
   const [renameValue, setRenameValue] = useState('');
   const [isRenaming, setIsRenaming] = useState(false);
   const [visageMode, setVisageMode] = useState<'2d' | '3d'>('3d');
+  const [isResizing, setIsResizing] = useState(false);
+  const [localWidth, setLocalWidth] = useState(panelWidth);
+  const closeThreshold = 120;
+
+  // Keep localWidth in sync with panelWidth prop when not actively resizing
+  if (!isResizing && localWidth !== panelWidth) {
+    setLocalWidth(panelWidth);
+  }
 
   const agent = state.selectedAgent;
 
   const handleClose = () => dispatch({ type: 'TOGGLE_RIGHT_PANEL' });
+
+  // Resize handlers: update local width; if width falls below threshold, close panel.
+  const onResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    const startX = e.clientX;
+    const startWidth = localWidth;
+  const onMouseMove = (ev: MouseEvent) => {
+      // ev.clientX - startX is positive when dragging right (increase width)
+      const newW = Math.max(80, startWidth + (ev.clientX - startX));
+      setLocalWidth(newW);
+    };
+    const onMouseUp = () => {
+      setIsResizing(false);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      // Use the latest measured width from state
+      if (localWidth < closeThreshold) {
+        handleClose();
+      } else {
+        // commit width to global state
+        dispatch({ type: 'SET_RIGHT_PANEL_WIDTH', width: localWidth });
+      }
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
 
   if (!agent) {
     return (
@@ -51,8 +86,32 @@ export function RightPanel({ state, dispatch, send, panelWidth }: RightPanelProp
 
   const msgs = state.messages[state.selectedChannel] || [];
 
+  // DM thread for this agent (if any)
+  const dmThread = state.dmThreads?.[agent.id] || [];
+  const [dmInput, setDmInput] = useState('');
+
+  const handleDmSend = () => {
+    const text = dmInput.trim();
+    if (!text) return;
+    const me = state.dashboardAgent?.id || '@me';
+    const msg = {
+      id: undefined,
+      from: me,
+      fromNick: state.dashboardAgent?.nick || 'You',
+      to: agent.id,
+      content: text,
+      ts: Date.now(),
+    } as any;
+    // optimistic update
+    dispatch({ type: 'DM_MESSAGE', data: msg });
+    // send to server (server should route to recipient and emit dm_message)
+    send({ type: 'message', data: { to: agent.id, content: text } });
+    setDmInput('');
+  };
+
   return (
-    <div className="right-panel" style={panelStyle}>
+    <div className={`right-panel ${isResizing ? 'active' : ''}`} style={{ ...panelStyle, width: localWidth }}>
+      <div className="right-resize-handle" onMouseDown={onResizeStart} aria-hidden="true" />
       <div className="right-panel-header">
         <h3>AGENT DETAIL</h3>
         <button className="panel-close-btn" onClick={handleClose} title="Close panel">
@@ -88,8 +147,8 @@ export function RightPanel({ state, dispatch, send, panelWidth }: RightPanelProp
           <span className="agent-type-icon">{agent.isDashboard ? '\uD83E\uDDD1' : '\uD83E\uDD16'}</span>
           {agent.id}
           {agent.verified
-            ? <span className="verified-badge" title="Verified (allowlisted)"> &#x2713;</span>
-            : <span className="unverified-badge" title="Unverified identity"> &#x26A0;</span>
+            ? <span className="verified-badge" title="Verified (allowlisted)"> \u2713</span>
+            : <span className="unverified-badge" title="Unverified identity"> \u26A0;</span>
           }
         </div>
         <div className={`detail-status ${agent.online ? 'online' : 'offline'}`}>
@@ -176,6 +235,22 @@ export function RightPanel({ state, dispatch, send, panelWidth }: RightPanelProp
             />
           </Suspense>
         )}
+        <div className="dm-thread">
+          <div className="dm-thread-header">Direct messages</div>
+          <div className="dm-messages-list">
+            {dmThread.length === 0 && <div className="dm-empty">No DMs yet. Say hi!</div>}
+            {dmThread.map((m, i) => (
+              <div key={i} className={`dm-msg ${m.from === state.dashboardAgent?.id ? 'mine' : 'theirs'}`}>
+                <div className="dm-msg-meta"><span className="dm-from">{m.from === state.dashboardAgent?.id ? 'You' : m.fromNick || m.from}</span> <span className="dm-ts">{new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
+                <div className="dm-msg-body">{m.content}</div>
+              </div>
+            ))}
+          </div>
+          <div className="dm-thread-input">
+            <input value={dmInput} onChange={e => setDmInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleDmSend(); }} placeholder="Message agent..." />
+            <button onClick={handleDmSend}>Send</button>
+          </div>
+        </div>
       </div>
     </div>
   );
