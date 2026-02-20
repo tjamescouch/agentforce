@@ -66,7 +66,19 @@ export function DMWindow({ agent, onClose }: DMWindowProps) {
 
   const handleSend = () => {
     if (!input.trim() || !ctx) return;
-    ctx.send({ type: 'send_message', data: { to: `@${agent.id}`, content: input.trim() } });
+    const text = input.trim();
+    // Optimistic local update so the message appears immediately
+    const msg = {
+      id: `local-${Date.now()}`,
+      from: myId || '',
+      fromNick: ctx.state.dashboardAgent?.nick || 'You',
+      to: agent.id,
+      content: text,
+      ts: Date.now(),
+    };
+    ctx.dispatch({ type: 'DM_MESSAGE', data: msg });
+    // agent.id already includes the '@' prefix — don't double it
+    ctx.send({ type: 'send_message', data: { to: agent.id, content: text } });
     setInput('');
   };
 

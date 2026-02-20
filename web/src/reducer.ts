@@ -286,9 +286,11 @@ export function reducer(state: DashboardState, action: DashboardAction): Dashboa
       return { ...state, tasks: reordered };
     }
     case 'DM_MESSAGE': {
-      // Key DM threads by the other party's agent ID
+      // Key DM threads by the other party's agent ID (with @ prefix, matching agents record keys)
       const myId = state.dashboardAgent?.id;
-      const peerId = action.data.from === myId ? action.data.to.replace(/^@/, '') : action.data.from;
+      const rawPeerId = action.data.from === myId ? action.data.to : action.data.from;
+      // Normalize: ensure consistent @ prefix (agents are keyed as @xxxx in state)
+      const peerId = rawPeerId.startsWith('@') ? rawPeerId : `@${rawPeerId}`;
       const existing = state.dmThreads[peerId] || [];
       const isDupe = existing.some(m =>
         (m.id && m.id === action.data.id) ||
