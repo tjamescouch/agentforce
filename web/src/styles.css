@@ -2650,13 +2650,50 @@ html[data-theme="dark"] .connection-steps {
   width: 320px;
   min-width: 200px;
   max-width: 600px;
-  background: var(--bg-secondary);
-  border-left: 1px solid var(--border);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
   overflow: hidden;
   animation: panel-slide 0.15s ease-out;
+}
+
+.task-panel-handle.collapsed-edge {
+  width: 6px;
+  min-width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+  flex-shrink: 0;
+  z-index: 20;
+  transition: background 0.2s;
+}
+
+.task-panel-handle.collapsed-edge::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 1px;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 32px;
+  border-radius: 2px;
+  background: var(--border);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.task-panel-handle.collapsed-edge:hover::after {
+  opacity: 0.7;
+}
+
+.task-panel-handle.collapsed-edge:hover {
+  background: var(--bg-tertiary);
 }
 
 .task-panel-header {

@@ -30,7 +30,11 @@ export default function App() {
     collapseThreshold: 60,
     storageKey: 'sidebar',
   });
-  const taskPanel = useResizable(320, 200, 600, 'right');
+  const taskPanel = useResizable(320, 200, 600, 'right', {
+    collapsible: true,
+    collapseThreshold: 100,
+    storageKey: 'taskPanel',
+  });
   const logsPanel = useResizable(200, 80, 500, 'bottom');
   const [theme, setTheme] = useTheme();
 
@@ -66,8 +70,14 @@ export default function App() {
             )}
             {state.taskPanelOpen && (
               <>
-                <div className="resize-handle" ref={taskPanel.handleRef} onMouseDown={taskPanel.onMouseDown} />
-                <TaskPanel state={state} dispatch={dispatch} send={send} panelWidth={taskPanel.width} />
+                <div
+                  className={`resize-handle task-panel-handle ${taskPanel.collapsed ? 'collapsed-edge' : ''}`}
+                  ref={taskPanel.handleRef}
+                  onMouseDown={taskPanel.onMouseDown}
+                />
+                {!taskPanel.collapsed && (
+                  <TaskPanel state={state} dispatch={dispatch} send={send} panelWidth={taskPanel.width} />
+                )}
               </>
             )}
           </div>
