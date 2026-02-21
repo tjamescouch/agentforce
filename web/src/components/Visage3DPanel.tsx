@@ -87,6 +87,7 @@ export function Visage3DPanel({ agent, messages, modelUrl, onFallback }: Visage3
   const controlsRef = useRef<OrbitControls | null>(null);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const morphMeshesRef = useRef<THREE.Mesh[]>([]);
+  const headBoneRef = useRef<THREE.Object3D | null>(null);
   const clockRef = useRef(new THREE.Clock());
   const rafRef = useRef<number>(0);
   const driverRef = useRef(new EmotionDriver(200, 2000));
@@ -198,6 +199,13 @@ export function Visage3DPanel({ agent, messages, modelUrl, onFallback }: Visage3
         });
         morphMeshesRef.current = meshes;
 
+        // Find head bone (Ready Player Me / standard humanoid rigs name it 'Head')
+        gltf.scene.traverse((child) => {
+          if (!headBoneRef.current && /^head$/i.test(child.name)) {
+            headBoneRef.current = child;
+          }
+        });
+
         // Count unique morph target names
         const names = new Set<string>();
         for (const mesh of meshes) {
@@ -257,9 +265,13 @@ export function Visage3DPanel({ agent, messages, modelUrl, onFallback }: Visage3
         }
       }
 
-      // Head rotation via bone (if available)
-      // This is more natural than morph targets for head pose
-      // TODO: Find head bone and apply pts.head_pitch/yaw/roll
+      // Head rotation via bone
+      if (headBoneRef.current && pts) {
+        const pitch = Math.max(-0.4, Math.min(0.4, pts.head_pitch ?? 0));
+        const yaw   = Math.max(-0.5, Math.min(0.5, pts.head_yaw   ?? 0));
+        const roll  = Math.max(-0.3, Math.min(0.3, pts.head_roll  ?? 0));
+        headBoneRef.current.rotation.set(pitch, yaw, roll, 'YXZ');
+      }
 
       mixerRef.current?.update(delta);
       controls.update();
