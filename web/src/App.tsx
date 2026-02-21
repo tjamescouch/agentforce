@@ -9,7 +9,6 @@ import { Sidebar } from './components/Sidebar';
 import { MessageFeed } from './components/MessageFeed';
 import { TaskPanel } from './components/TaskPanel';
 import { DropZone } from './components/DropZone';
-import { NetworkPulse } from './components/NetworkPulse';
 import { LogsPanel } from './components/LogsPanel';
 import { SendFileModal } from './components/SendFileModal';
 import { SaveModal } from './components/SaveModal';
@@ -61,13 +60,9 @@ export default function App() {
               ref={sidebar.handleRef}
               onMouseDown={sidebar.onMouseDown}
             />
-            {state.pulseOpen ? (
-              <NetworkPulse state={state} dispatch={dispatch} />
-            ) : (
-              <DropZone state={state} dispatch={dispatch}>
-                <MessageFeed state={state} dispatch={dispatch} send={send} />
-              </DropZone>
-            )}
+            <DropZone state={state} dispatch={dispatch}>
+              <MessageFeed state={state} dispatch={dispatch} send={send} />
+            </DropZone>
             {state.taskPanelOpen && (
               <>
                 <div
