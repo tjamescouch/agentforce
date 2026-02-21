@@ -901,13 +901,16 @@ function connectClientToAgentChat(client: DashboardClient, preferredNick?: strin
       pubkey: pemPubkey
     }));
 
-    // Keepalive pings every 25s to prevent idle timeout
+    // Keepalive pings every 15s to prevent idle timeout
     if (client.agentChatPingInterval) clearInterval(client.agentChatPingInterval);
     client.agentChatPingInterval = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'PING' }));
       }
     }, 15000); // Reduced from 25s to 15s to prevent server/LB timeout disconnects
+
+    // Reset backoff on successful connection
+    (client as any)._reconnectBackoff = 2000;
   });
 
   ws.on('message', (data) => {
@@ -929,17 +932,20 @@ function connectClientToAgentChat(client: DashboardClient, preferredNick?: strin
     if (client.agentChatWs === ws && client.ws.readyState === WebSocket.OPEN) {
       client.agentChatWs = null;
       client.agentId = null;
-      console.log(`Auto-reconnecting per-session connection for ${client.id}...`);
+      // Exponential backoff: 2s, 4s, 8s, 16s, max 30s
+      const backoff = (client as any)._reconnectBackoff || 2000;
+      const nextBackoff = Math.min(backoff * 2, 30000);
+      (client as any)._reconnectBackoff = nextBackoff;
+      console.log(`Auto-reconnecting per-session connection for ${client.id} in ${backoff / 1000}s...`);
       client.ws.send(JSON.stringify({
         type: 'error',
         data: { code: 'SESSION_RECONNECTING', message: 'AgentChat connection lost, reconnecting...' }
       }));
-      // Reconnect after a short delay, reusing the same identity
       setTimeout(() => {
         if (client.ws.readyState === WebSocket.OPEN && client.mode === 'participate') {
           reconnectClientToAgentChat(client);
         }
-      }, 2000);
+      }, backoff);
     }
   });
 
@@ -1266,7 +1272,10 @@ function reconnectClientToAgentChat(client: DashboardClient): void {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'PING' }));
       }
-    }, 25000);
+    }, 15000); // Match initial connection ping interval
+
+    // Reset backoff on successful reconnection
+    (client as any)._reconnectBackoff = 2000;
   });
 
   ws.on('message', (data) => {
@@ -1287,7 +1296,11 @@ function reconnectClientToAgentChat(client: DashboardClient): void {
     if (client.agentChatWs === ws && client.ws.readyState === WebSocket.OPEN) {
       client.agentChatWs = null;
       client.agentId = null;
-      console.log(`Auto-reconnecting per-session connection for ${client.id}...`);
+      // Exponential backoff: 2s, 4s, 8s, 16s, max 30s
+      const backoff = (client as any)._reconnectBackoff || 2000;
+      const nextBackoff = Math.min(backoff * 2, 30000);
+      (client as any)._reconnectBackoff = nextBackoff;
+      console.log(`Auto-reconnecting per-session connection for ${client.id} in ${backoff / 1000}s...`);
       client.ws.send(JSON.stringify({
         type: 'error',
         data: { code: 'SESSION_RECONNECTING', message: 'AgentChat connection lost, reconnecting...' }
@@ -1296,7 +1309,7 @@ function reconnectClientToAgentChat(client: DashboardClient): void {
         if (client.ws.readyState === WebSocket.OPEN && client.mode === 'participate') {
           reconnectClientToAgentChat(client);
         }
-      }, 2000);
+      }, backoff);
     }
   });
 
