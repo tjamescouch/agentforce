@@ -134,6 +134,7 @@ interface DashboardClient {
   agentId: string | null;
   nick: string | null;
   agentChatPingInterval: ReturnType<typeof setInterval> | null;
+  pendingMessages: Array<{ type: string; to: string; content: string; sig: string | null }>;
 }
 
 interface AgentChatMsg {
@@ -959,6 +960,13 @@ function handlePerSessionMessage(client: DashboardClient, msg: AgentChatMsg): vo
     case 'WELCOME':
       client.agentId = msg.agent_id || null;
       console.log(`Per-session ${client.id} registered as ${msg.agent_id} (verified=${!!(msg as any).verified})`);
+      
+      // Flush pending messages now that connection is ready
+      while (client.pendingMessages.length > 0) {
+        const pending = client.pendingMessages.shift()!;
+        client.agentChatWs?.send(JSON.stringify(pending));
+      }
+      
       // Notify the browser of their session identity, including keys for localStorage persistence
       if (client.ws.readyState === WebSocket.OPEN) {
         client.ws.send(JSON.stringify({
@@ -1412,11 +1420,19 @@ function handleDashboardMessage(client: DashboardClient, msg: DashboardMessage):
         client.ws.send(JSON.stringify({ type: 'error', data: { code: 'LURK_MODE', message: 'Cannot send in lurk mode' } }));
         return;
       }
-      if (!client.agentChatWs || client.agentChatWs.readyState !== WebSocket.OPEN) {
+      if (!client.agentChatWs) {
         client.ws.send(JSON.stringify({ type: 'error', data: { code: 'NO_SESSION', message: 'No per-session AgentChat connection. Switch to participate mode first.' } }));
         return;
       }
       {
+        // If connection exists but not ready yet, queue the message
+        if (client.agentChatWs.readyState !== WebSocket.OPEN || !client.agentId) {
+          const content = (msg.data.content as string || '').trim();
+          const sig = client.identity ? signMessageWithIdentity(content, client.identity) : null;
+          client.pendingMessages.push({ type: 'MSG', to: msg.data.to, content, sig });
+          client.ws.send(JSON.stringify({ type: 'message_queued', data: { to: msg.data.to } }));
+          return;
+        }
         const content = (msg.data.content as string || '').trim();
         if (!content || content.length > 2097152) {
           client.ws.send(JSON.stringify({ type: 'error', data: { code: 'INVALID_MESSAGE', message: 'Message empty or too long (max 2MB)' } }));
@@ -1871,7 +1887,8 @@ wss.on('connection', (ws, req) => {
     agentChatWs: null,
     agentId: null,
     nick: null,
-    agentChatPingInterval: null
+    agentChatPingInterval: null,
+    pendingMessages: []
   };
   dashboardClients.add(client);
   console.log(`Dashboard client connected: ${client.id} from ${ip}`);
