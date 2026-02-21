@@ -296,7 +296,7 @@ export function MessageFeed({ state, dispatch, send }: MessageFeedProps) {
             }
           }}
           placeholder={state.mode === 'lurk' ? 'Lurk mode - read only' : 'Type a message... (Shift+Enter for newline)'}
-          disabled={state.mode === 'lurk'}
+          disabled={state.mode === 'lurk' || !state.dashboardAgent?.id}
           style={{ height: inputHeight }}
         />
       </form>
