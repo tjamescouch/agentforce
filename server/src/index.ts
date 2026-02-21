@@ -907,7 +907,7 @@ function connectClientToAgentChat(client: DashboardClient, preferredNick?: strin
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'PING' }));
       }
-    }, 25000);
+    }, 15000); // Reduced from 25s to 15s to prevent server/LB timeout disconnects
   });
 
   ws.on('message', (data) => {
