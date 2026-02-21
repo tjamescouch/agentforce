@@ -159,6 +159,9 @@ interface AgentChatMsg {
   verified?: boolean;
   presence?: string;
   status_text?: string | null;
+  challenge_id?: string;
+  nonce?: string;
+  messageId?: string;
 }
 
 interface DashboardMessage {
@@ -1428,13 +1431,13 @@ function handleDashboardMessage(client: DashboardClient, msg: DashboardMessage):
       }
       if (!client.agentChatWs || client.agentChatWs.readyState === WebSocket.CLOSED) {
         // Connection doesn't exist yet (or closed) — create it and queue the message
-        console.log(\`send_message: creating missing AgentChat connection for \${client.id}\`);
+        console.log(`send_message: creating missing AgentChat connection for ${client.id}`);
         connectClientToAgentChat(client);
         const content = (msg.data.content as string || '').trim();
         const sig = client.identity ? signMessageWithIdentity(content, client.identity) : null;
-        client.pendingMessages.push({ type: 'MSG', to: msg.data.to, content, sig });
-        client.ws.send(JSON.stringify({ type: 'message_queued', data: { to: msg.data.to } }));
-        console.log(\`send_message: queued message for \${client.id}, connection is being established\`);
+        client.pendingMessages.push({ type: 'MSG', to: msg.data.to as string, content, sig });
+        client.ws.send(JSON.stringify({ type: 'message_queued', data: { to: msg.data.to as string } }));
+        console.log(`send_message: queued message for ${client.id}, connection is being established`);
         break;
       }
       {
@@ -1442,8 +1445,8 @@ function handleDashboardMessage(client: DashboardClient, msg: DashboardMessage):
         if (client.agentChatWs.readyState !== WebSocket.OPEN || !client.agentId) {
           const content = (msg.data.content as string || '').trim();
           const sig = client.identity ? signMessageWithIdentity(content, client.identity) : null;
-          client.pendingMessages.push({ type: 'MSG', to: msg.data.to, content, sig });
-          client.ws.send(JSON.stringify({ type: 'message_queued', data: { to: msg.data.to } }));
+          client.pendingMessages.push({ type: 'MSG', to: msg.data.to as string, content, sig });
+          client.ws.send(JSON.stringify({ type: 'message_queued', data: { to: msg.data.to as string } }));
           return;
         }
         const content = (msg.data.content as string || '').trim();
