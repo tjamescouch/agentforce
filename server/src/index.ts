@@ -1421,8 +1421,15 @@ function handleDashboardMessage(client: DashboardClient, msg: DashboardMessage):
         return;
       }
       if (!client.agentChatWs) {
-        client.ws.send(JSON.stringify({ type: 'error', data: { code: 'NO_SESSION', message: 'No per-session AgentChat connection. Switch to participate mode first.' } }));
-        return;
+        // Connection doesn't exist yet but client is in participate mode — create it and queue the message
+        console.log(\`send_message: creating missing AgentChat connection for \${client.id}\`);
+        connectClientToAgentChat(client);
+        const content = (msg.data.content as string || '').trim();
+        const sig = client.identity ? signMessageWithIdentity(content, client.identity) : null;
+        client.pendingMessages.push({ type: 'MSG', to: msg.data.to, content, sig });
+        client.ws.send(JSON.stringify({ type: 'message_queued', data: { to: msg.data.to } }));
+        console.log(\`send_message: queued message for \${client.id}, connection is being established\`);
+        break;
       }
       {
         // If connection exists but not ready yet, queue the message
