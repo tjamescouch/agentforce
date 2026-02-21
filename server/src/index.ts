@@ -1902,7 +1902,8 @@ wss.on('connection', (ws, req) => {
     agentId: null,
     nick: null,
     agentChatPingInterval: null,
-    pendingMessages: []
+    pendingMessages: [],
+    _reconnectBackoff: 2000,
   };
   dashboardClients.add(client);
   console.log(`Dashboard client connected: ${client.id} from ${ip}`);
