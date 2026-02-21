@@ -135,6 +135,7 @@ interface DashboardClient {
   nick: string | null;
   agentChatPingInterval: ReturnType<typeof setInterval> | null;
   pendingMessages: Array<{ type: string; to: string; content: string; sig: string | null }>;
+  _reconnectBackoff: number;
 }
 
 interface AgentChatMsg {
@@ -911,7 +912,7 @@ function connectClientToAgentChat(client: DashboardClient, preferredNick?: strin
     }, 15000); // Reduced from 25s to 15s to prevent server/LB timeout disconnects
 
     // Reset backoff on successful connection
-    (client as any)._reconnectBackoff = 2000;
+    client._reconnectBackoff = 2000;
   });
 
   ws.on('message', (data) => {
@@ -934,9 +935,9 @@ function connectClientToAgentChat(client: DashboardClient, preferredNick?: strin
       client.agentChatWs = null;
       client.agentId = null;
       // Exponential backoff: 2s, 4s, 8s, 16s, max 30s
-      const backoff = (client as any)._reconnectBackoff || 2000;
+      const backoff = client._reconnectBackoff || 2000;
       const nextBackoff = Math.min(backoff * 2, 30000);
-      (client as any)._reconnectBackoff = nextBackoff;
+      client._reconnectBackoff = nextBackoff;
       console.log(`Auto-reconnecting per-session connection for ${client.id} in ${backoff / 1000}s...`);
       client.ws.send(JSON.stringify({
         type: 'error',
@@ -1283,7 +1284,7 @@ function reconnectClientToAgentChat(client: DashboardClient): void {
     }, 15000); // Match initial connection ping interval
 
     // Reset backoff on successful reconnection
-    (client as any)._reconnectBackoff = 2000;
+    client._reconnectBackoff = 2000;
   });
 
   ws.on('message', (data) => {
@@ -1305,9 +1306,9 @@ function reconnectClientToAgentChat(client: DashboardClient): void {
       client.agentChatWs = null;
       client.agentId = null;
       // Exponential backoff: 2s, 4s, 8s, 16s, max 30s
-      const backoff = (client as any)._reconnectBackoff || 2000;
+      const backoff = client._reconnectBackoff || 2000;
       const nextBackoff = Math.min(backoff * 2, 30000);
-      (client as any)._reconnectBackoff = nextBackoff;
+      client._reconnectBackoff = nextBackoff;
       console.log(`Auto-reconnecting per-session connection for ${client.id} in ${backoff / 1000}s...`);
       client.ws.send(JSON.stringify({
         type: 'error',
