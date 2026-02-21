@@ -159,6 +159,9 @@ interface AgentChatMsg {
   verified?: boolean;
   presence?: string;
   status_text?: string | null;
+  challenge_id?: string;
+  nonce?: string;
+  messageId?: string;
 }
 
 interface DashboardMessage {
@@ -608,7 +611,7 @@ function handleAgentChatMessage(msg: AgentChatMsg): void {
   switch (msg.type) {
     case 'CHALLENGE': {
       if (!identity || !agentChatWs) break;
-      const { challenge_id, nonce } = msg as any;
+      const { challenge_id, nonce } = msg;
       const timestamp = Date.now();
       const signingContent = `AGENTCHAT_AUTH|${nonce}|${challenge_id}|${timestamp}`;
       const pemPrivkey = rawSecretKeyToPem(identity.secretKey);
@@ -627,7 +630,7 @@ function handleAgentChatMessage(msg: AgentChatMsg): void {
     case 'WELCOME':
       state.dashboardAgent!.id = msg.agent_id || null;
       state.dashboardAgent!.nick = msg.name || identity!.nick;
-      console.log(`Registered as ${msg.agent_id} (verified=${!!(msg as any).verified})`);
+      console.log(`Registered as ${msg.agent_id} (verified=${!!msg.verified})`);
       break;
 
     case 'MSG':
@@ -784,13 +787,13 @@ function handleAgentChatMessage(msg: AgentChatMsg): void {
         dashboardClients.forEach(dc => {
           if (dc.ws.readyState !== WebSocket.OPEN) return;
           if (dc.agentId === recipientId || dc.agentId === msg.from) {
-            try { dc.ws.send(JSON.stringify({ type: 'typing', data: { from: msg.from, from_name: (msg as any).from_name || msg.name, channel: msg.to } })); } catch { /* ignore */ }
+            try { dc.ws.send(JSON.stringify({ type: 'typing', data: { from: msg.from, from_name: msg.from_name || msg.name, channel: msg.to } })); } catch { /* ignore */ }
           }
         });
       } else {
         broadcastToDashboards({
           type: 'typing',
-          data: { from: msg.from, from_name: (msg as any).from_name, channel: msg.channel || msg.to }
+          data: { from: msg.from, from_name: msg.from_name, channel: msg.channel || msg.to }
         });
       }
       break;
@@ -801,7 +804,7 @@ function handleAgentChatMessage(msg: AgentChatMsg): void {
         const recipientId = msg.to.replace(/^@/, '');
         const payload = {
           type: 'read_receipt',
-          data: { from: msg.from, to: msg.to, messageId: (msg as any).id || (msg as any).messageId }
+          data: { from: msg.from, to: msg.to, messageId: msg.id || msg.messageId }
         };
         dashboardClients.forEach(dc => {
           if (dc.ws.readyState !== WebSocket.OPEN) return;
@@ -845,7 +848,7 @@ function handleIncomingMessage(msg: AgentChatMsg): void {
   }
 
   // Cache from_name so future lookups (file transfers, typing) resolve correctly
-  const senderName = (msg as any).from_name || msg.name;
+  const senderName = msg.from_name || msg.name;
   if (msg.from && senderName && !agentNameOverrides[msg.from]) {
     agentNameOverrides[msg.from] = senderName;
   }
@@ -959,7 +962,7 @@ function handlePerSessionMessage(client: DashboardClient, msg: AgentChatMsg): vo
   switch (msg.type) {
     case 'WELCOME':
       client.agentId = msg.agent_id || null;
-      console.log(`Per-session ${client.id} registered as ${msg.agent_id} (verified=${!!(msg as any).verified})`);
+      console.log(`Per-session ${client.id} registered as ${msg.agent_id} (verified=${!!msg.verified})`);
       
       // Flush pending messages now that connection is ready
       while (client.pendingMessages.length > 0) {
@@ -993,7 +996,7 @@ function handlePerSessionMessage(client: DashboardClient, msg: AgentChatMsg): vo
 
     case 'CHALLENGE': {
       if (!client.identity || !client.agentChatWs) break;
-      const { challenge_id, nonce } = msg as any;
+      const { challenge_id, nonce } = msg;
       const timestamp = Date.now();
       const signingContent = `AGENTCHAT_AUTH|${nonce}|${challenge_id}|${timestamp}`;
       const pemPrivkey = rawSecretKeyToPem(client.identity.secretKey);
@@ -1028,7 +1031,7 @@ function handlePerSessionMessage(client: DashboardClient, msg: AgentChatMsg): vo
       }
       // Route DMs privately to the recipient's session only
       if (msg.to && msg.to.startsWith('@')) {
-        const senderName = (msg as any).from_name || msg.name;
+        const senderName = msg.from_name || msg.name;
         if (msg.from && senderName && !agentNameOverrides[msg.from]) {
           agentNameOverrides[msg.from] = senderName;
         }
