@@ -1420,6 +1420,10 @@ function handleDashboardMessage(client: DashboardClient, msg: DashboardMessage):
         client.ws.send(JSON.stringify({ type: 'error', data: { code: 'LURK_MODE', message: 'Cannot send in lurk mode' } }));
         return;
       }
+      if (client.mode !== 'participate') {
+        client.ws.send(JSON.stringify({ type: 'error', data: { code: 'NO_AGENTCHAT_CONNECTION', message: 'No per-session AgentChat connection. Switch to participate mode first.' } }));
+        return;
+      }
       if (!client.agentChatWs) {
         // Connection doesn't exist yet but client is in participate mode — create it and queue the message
         console.log(\`send_message: creating missing AgentChat connection for \${client.id}\`);
