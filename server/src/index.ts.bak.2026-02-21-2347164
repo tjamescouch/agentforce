@@ -1416,18 +1416,21 @@ function getChannelsSnapshot(): Array<{ name: string; members: string[]; message
 function handleDashboardMessage(client: DashboardClient, msg: DashboardMessage): void {
   switch (msg.type) {
     case 'send_message':
-      if (client.mode === 'lurk') {
-        client.ws.send(JSON.stringify({ type: 'error', data: { code: 'LURK_MODE', message: 'Cannot send in lurk mode' } }));
-        return;
-      }
-      // Auto-recover: if mode is unexpectedly not 'participate' or 'lurk', reconnect rather than error
-      if (client.mode !== 'participate') {
-        console.warn(`send_message: unexpected mode '${client.mode}' for ${client.id}, auto-recovering to participate`);
-        client.mode = 'participate';
-        connectClientToAgentChat(client);
-      }
+     if (client.mode === 'lurk') {
+      client.ws.send(JSON.stringify({ type: 'error', data: { code: 'LURK_MODE', message: 'Cannot send in lurk mode' } }));
+      return;
+    }
+    if (client.mode !== 'participate') {
+      client.ws.send(JSON.stringify({ type: 'error', data: { code: 'NO_AGENTCHAT_CONNECTION', message: 'No per-session AgentChat connection. Switch to participate mode first.' } }));
+      return;
+    }
+     // Auto-recover: if mode is unexpectedly not 'participate' or 'lurk', treat as participate
+     if (client.mode !== 'participate' && client.mode !== 'lurk') {
+       console.warn(`send_message: unexpected mode '${client.mode}' for ${client.id}, auto-recovering to participate`);
+       client.mode = 'participate';
+     }
       if (!client.agentChatWs || client.agentChatWs.readyState === WebSocket.CLOSED) {
-        // Connection doesn't exist yet (or closed) — create it and queue the message
+        // Connection doesn't exist yet but client is in participate mode — create it and queue the message
         console.log(\`send_message: creating missing AgentChat connection for \${client.id}\`);
         connectClientToAgentChat(client);
         const content = (msg.data.content as string || '').trim();
