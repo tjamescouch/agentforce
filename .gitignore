@@ -9,7 +9,6 @@ server/public/assets/
 # Sensitive directories - NEVER commit
 .claude/
 .ssh/
-.owl/
 .agentchat/
 .env
 .env.*
