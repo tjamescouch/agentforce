@@ -266,10 +266,10 @@ export function Visage3DPanel({ agent, messages, modelUrl, onFallback }: Visage3
       }
 
       // Head rotation via bone
-      if (headBoneRef.current && pts) {
-        const pitch = Math.max(-0.4, Math.min(0.4, pts.head_pitch ?? 0));
-        const yaw   = Math.max(-0.5, Math.min(0.5, pts.head_yaw   ?? 0));
-        const roll  = Math.max(-0.3, Math.min(0.3, pts.head_roll  ?? 0));
+      if (headBoneRef.current && frame.pts) {
+        const pitch = Math.max(-0.4, Math.min(0.4, frame.pts.head_pitch ?? 0));
+        const yaw   = Math.max(-0.5, Math.min(0.5, frame.pts.head_yaw   ?? 0));
+        const roll  = Math.max(-0.3, Math.min(0.3, frame.pts.head_roll  ?? 0));
         headBoneRef.current.rotation.set(pitch, yaw, roll, 'YXZ');
       }
 
