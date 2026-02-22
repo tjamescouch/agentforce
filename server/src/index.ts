@@ -135,6 +135,7 @@ interface DashboardClient {
   nick: string | null;
   agentChatPingInterval: ReturnType<typeof setInterval> | null;
   pendingMessages: Array<{ type: string; to: string; content: string; sig: string | null }>;
+  _reconnectBackoff: number;
 }
 
 interface AgentChatMsg {
@@ -914,7 +915,7 @@ function connectClientToAgentChat(client: DashboardClient, preferredNick?: strin
     }, 15000); // Reduced from 25s to 15s to prevent server/LB timeout disconnects
 
     // Reset backoff on successful connection
-    (client as any)._reconnectBackoff = 2000;
+    client._reconnectBackoff = 2000;
   });
 
   ws.on('message', (data) => {
@@ -937,9 +938,9 @@ function connectClientToAgentChat(client: DashboardClient, preferredNick?: strin
       client.agentChatWs = null;
       client.agentId = null;
       // Exponential backoff: 2s, 4s, 8s, 16s, max 30s
-      const backoff = (client as any)._reconnectBackoff || 2000;
+      const backoff = client._reconnectBackoff || 2000;
       const nextBackoff = Math.min(backoff * 2, 30000);
-      (client as any)._reconnectBackoff = nextBackoff;
+      client._reconnectBackoff = nextBackoff;
       console.log(`Auto-reconnecting per-session connection for ${client.id} in ${backoff / 1000}s...`);
       client.ws.send(JSON.stringify({
         type: 'error',
@@ -1286,7 +1287,7 @@ function reconnectClientToAgentChat(client: DashboardClient): void {
     }, 15000); // Match initial connection ping interval
 
     // Reset backoff on successful reconnection
-    (client as any)._reconnectBackoff = 2000;
+    client._reconnectBackoff = 2000;
   });
 
   ws.on('message', (data) => {
@@ -1308,9 +1309,9 @@ function reconnectClientToAgentChat(client: DashboardClient): void {
       client.agentChatWs = null;
       client.agentId = null;
       // Exponential backoff: 2s, 4s, 8s, 16s, max 30s
-      const backoff = (client as any)._reconnectBackoff || 2000;
+      const backoff = client._reconnectBackoff || 2000;
       const nextBackoff = Math.min(backoff * 2, 30000);
-      (client as any)._reconnectBackoff = nextBackoff;
+      client._reconnectBackoff = nextBackoff;
       console.log(`Auto-reconnecting per-session connection for ${client.id} in ${backoff / 1000}s...`);
       client.ws.send(JSON.stringify({
         type: 'error',
@@ -1462,7 +1463,7 @@ function handleDashboardMessage(client: DashboardClient, msg: DashboardMessage):
 
     case 'typing': {
       // Forward typing indicator from dashboard to AgentChat
-      const typeTo = (msg.data as any)?.to;
+      const typeTo = (msg.data.to as string | undefined);
       if (!client.agentChatWs || client.agentChatWs.readyState !== WebSocket.OPEN) break;
       if (typeTo && typeof typeTo === 'string') {
         client.agentChatWs.send(JSON.stringify({ type: 'TYPING', to: typeTo }));
@@ -1472,8 +1473,8 @@ function handleDashboardMessage(client: DashboardClient, msg: DashboardMessage):
 
     case 'read': {
       // Forward read receipt from dashboard to AgentChat
-      const readTo = (msg.data as any)?.to;
-      const readId = (msg.data as any)?.id;
+      const readTo = (msg.data.to as string | undefined);
+      const readId = (msg.data.id as string | undefined);
       if (!client.agentChatWs || client.agentChatWs.readyState !== WebSocket.OPEN) break;
       if (readTo && typeof readTo === 'string') {
         client.agentChatWs.send(JSON.stringify({ type: 'READ', to: readTo, id: readId }));
@@ -1904,7 +1905,8 @@ wss.on('connection', (ws, req) => {
     agentId: null,
     nick: null,
     agentChatPingInterval: null,
-    pendingMessages: []
+    pendingMessages: [],
+    _reconnectBackoff: 2000,
   };
   dashboardClients.add(client);
   console.log(`Dashboard client connected: ${client.id} from ${ip}`);
