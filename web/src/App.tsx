@@ -20,10 +20,25 @@ function hasStoredIdentity(): boolean {
   return !!(localStorage.getItem('dashboardNick'));
 }
 
+/**
+ * App shell.
+ *
+ * Auth order:
+ *   1. LockScreen — backend-enforced PIN gate (shown on every launch)
+ *      → calls /api/ui-auth/status, /api/ui-auth/unlock
+ *      → on success: sets ui_token in sessionStorage
+ *   2. LoginScreen — pick a display name (persisted in localStorage)
+ *   3. Main dashboard
+ */
 export default function App() {
+  // Phase 1: UI auth (backend PIN)
+  const [uiAuthed, setUiAuthed] = useState(false);
+  // Phase 2: display name chosen
   const [loggedIn, setLoggedIn] = useState(hasStoredIdentity);
+
   const [state, dispatch] = useReducer(reducer, initialState);
-  const send = useWebSocket(dispatch, loggedIn);
+  const send = useWebSocket(dispatch, uiAuthed && loggedIn);
+
   const sidebar = useResizable(220, 160, 400, 'left', {
     collapsible: true,
     collapseThreshold: 60,
@@ -37,15 +52,26 @@ export default function App() {
   const logsPanel = useResizable(200, 80, 500, 'bottom');
   const [theme, setTheme] = useTheme();
 
+  const handleUiAuthed = useCallback(() => {
+    setUiAuthed(true);
+  }, []);
+
   const handleLogin = useCallback((name: string) => {
     localStorage.setItem('dashboardNick', name);
     setLoggedIn(true);
   }, []);
 
+  // Phase 1: backend lock screen (always shown on launch until PIN accepted)
+  if (!uiAuthed) {
+    return <LockScreen onUnlocked={handleUiAuthed} />;
+  }
+
+  // Phase 2: display name
   if (!loggedIn) {
     return <LoginScreen onLogin={handleLogin} />;
   }
 
+  // Phase 3: main dashboard
   return (
     <DashboardContext.Provider value={{ state, dispatch, send }}>
       <div className="dashboard">
@@ -88,7 +114,6 @@ export default function App() {
         <SendFileModal state={state} dispatch={dispatch} send={send} />
         <SaveModal state={state} dispatch={dispatch} send={send} />
         <ConnectionOverlay state={state} />
-        <LockScreen state={state} dispatch={dispatch} />
       </div>
     </DashboardContext.Provider>
   );

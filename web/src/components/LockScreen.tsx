@@ -1,62 +1,158 @@
-import { useState, useEffect, useCallback } from 'react';
-import type { DashboardState, DashboardAction } from '../types';
+import { useState, useEffect, useCallback, useRef } from 'react';
+
+export type LockMode = 'checking' | 'open' | 'locked' | 'unlocked';
 
 interface LockScreenProps {
-  state: DashboardState;
-  dispatch: React.Dispatch<DashboardAction>;
+  onUnlocked: () => void;
 }
 
-export function LockScreen({ state, dispatch }: LockScreenProps) {
-  const [time, setTime] = useState(new Date());
-  const [locking, setLocking] = useState(false);
-  const [dragY, setDragY] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
+/**
+ * Backend-enforced lock screen.
+ *
+ * On mount:
+ *   1. GET /api/ui-auth/status — if pinRequired=false or already authenticated → onUnlocked()
+ *   2. If locked → show PIN entry
+ *   3. POST /api/ui-auth/unlock { pin } — on success, store token in sessionStorage, call onUnlocked()
+ *
+ * The UI session token is stored in sessionStorage (tab-scoped) and attached to
+ * all API requests via the X-UI-Token header by the global fetch wrapper below.
+ */
 
-  // Update clock every second
+/** Attach the UI token to all outgoing fetch/XHR requests automatically. */
+export function getUiToken(): string | null {
+  return sessionStorage.getItem('ui_token');
+}
+
+export function clearUiToken(): void {
+  sessionStorage.removeItem('ui_token');
+}
+
+export function storeUiToken(token: string): void {
+  sessionStorage.setItem('ui_token', token);
+}
+
+export function LockScreen({ onUnlocked }: LockScreenProps) {
+  const [mode, setMode] = useState<LockMode>('checking');
+  const [pin, setPin] = useState('');
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [time, setTime] = useState(new Date());
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Clock tick
   useEffect(() => {
     const interval = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(interval);
   }, []);
 
-  const unlock = useCallback(() => {
-    dispatch({ type: 'HIDE_LOCK' });
-  }, [dispatch]);
-
-  // Allow Esc / Enter / Space to dismiss
+  // Focus PIN input when locked
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!state.lockScreen) return;
-      if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        unlock();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [state.lockScreen, unlock]);
+    if (mode === 'locked') {
+      setTimeout(() => inputRef.current?.focus(), 100);
+    }
+  }, [mode]);
 
-  if (!state.lockScreen) return null;
+  // Check auth status on mount
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkStatus() {
+      try {
+        const existingToken = getUiToken();
+        const headers: Record<string, string> = {};
+        if (existingToken) headers['X-UI-Token'] = existingToken;
+
+        const res = await fetch('/api/ui-auth/status', { headers });
+        if (cancelled) return;
+
+        if (!res.ok) {
+          setMode('locked');
+          return;
+        }
+
+        const data = await res.json() as { pinRequired: boolean; authenticated: boolean };
+
+        if (!data.pinRequired) {
+          // Open/dev mode — no PIN needed
+          setMode('open');
+          onUnlocked();
+        } else if (data.authenticated) {
+          // Valid session already
+          setMode('unlocked');
+          onUnlocked();
+        } else {
+          setMode('locked');
+        }
+      } catch {
+        if (!cancelled) {
+          // Server unreachable — show locked screen
+          setMode('locked');
+        }
+      }
+    }
+
+    checkStatus();
+    return () => { cancelled = true; };
+  }, [onUnlocked]);
+
+  const handleUnlock = useCallback(async () => {
+    if (!pin.trim() || submitting) return;
+    setSubmitting(true);
+    setError('');
+
+    try {
+      const res = await fetch('/api/ui-auth/unlock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: pin.trim() }),
+      });
+
+      const data = await res.json() as { token?: string; error?: string };
+
+      if (res.ok && data.token) {
+        storeUiToken(data.token);
+        setMode('unlocked');
+        setPin('');
+        onUnlocked();
+      } else {
+        setError(data.error || 'Invalid PIN');
+        setPin('');
+        inputRef.current?.focus();
+      }
+    } catch {
+      setError('Connection error — try again');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [pin, submitting, onUnlocked]);
+
+  // Enter to submit
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') handleUnlock();
+  }, [handleUnlock]);
+
+  if (mode === 'checking') {
+    return (
+      <div className="lock-screen" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ opacity: 0.5, fontSize: 14 }}>Checking authentication…</div>
+      </div>
+    );
+  }
+
+  if (mode === 'open' || mode === 'unlocked') {
+    return null;
+  }
 
   const hours = time.getHours();
   const minutes = time.getMinutes().toString().padStart(2, '0');
   const period = hours >= 12 ? 'PM' : 'AM';
   const displayHours = hours % 12 || 12;
-
-  const dateStr = time.toLocaleDateString('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric'
-  });
-
-  const agentCount = Object.values(state.agents).filter(a => a.online).length;
+  const dateStr = time.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
   return (
-    <div
-      className={`lock-screen ${locking ? 'locking' : ''}`}
-      onClick={unlock}
-      style={isDragging ? { transform: `translateY(${dragY}px)`, transition: 'none' } : undefined}
-    >
+    <div className="lock-screen" style={{ zIndex: 9999 }}>
       <div className="lock-screen-content">
+        {/* Clock */}
         <div className="lock-time">
           <span className="lock-hours">{displayHours}</span>
           <span className="lock-colon">:</span>
@@ -64,20 +160,54 @@ export function LockScreen({ state, dispatch }: LockScreenProps) {
           <span className="lock-period">{period}</span>
         </div>
         <div className="lock-date">{dateStr}</div>
-        <div className="lock-status">
-          <span className="lock-dot" />
-          {agentCount} agent{agentCount !== 1 ? 's' : ''} online
+
+        {/* PIN entry */}
+        <div style={{ marginTop: 32, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+          <input
+            ref={inputRef}
+            type="password"
+            value={pin}
+            onChange={e => { setPin(e.target.value); setError(''); }}
+            onKeyDown={handleKeyDown}
+            placeholder="Enter PIN"
+            autoComplete="current-password"
+            disabled={submitting}
+            style={{
+              background: 'rgba(255,255,255,0.1)',
+              border: error ? '1px solid rgba(255,80,80,0.8)' : '1px solid rgba(255,255,255,0.25)',
+              borderRadius: 8,
+              color: '#fff',
+              fontSize: 18,
+              padding: '10px 16px',
+              textAlign: 'center',
+              letterSpacing: '0.25em',
+              width: 200,
+              outline: 'none',
+            }}
+          />
+          {error && (
+            <div style={{ color: 'rgba(255,120,120,0.9)', fontSize: 13 }}>{error}</div>
+          )}
+          <button
+            onClick={handleUnlock}
+            disabled={!pin.trim() || submitting}
+            style={{
+              background: submitting ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.2)',
+              border: '1px solid rgba(255,255,255,0.3)',
+              borderRadius: 8,
+              color: '#fff',
+              cursor: pin.trim() && !submitting ? 'pointer' : 'default',
+              fontSize: 14,
+              padding: '8px 24px',
+              transition: 'background 0.2s',
+            }}
+          >
+            {submitting ? 'Unlocking…' : 'Unlock'}
+          </button>
+          <div className="lock-hint" style={{ marginTop: 4 }}>
+            Backend-enforced · Press Enter to unlock
+          </div>
         </div>
-        <div className="lock-hint">Click or press Esc/Enter/Space to unlock</div>
-      </div>
-      <div className="lock-user">
-        <div className="lock-avatar">
-          <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="16" cy="12" r="5" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-            <path d="M6 28c0-5.523 4.477-10 10-10s10 4.477 10 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none"/>
-          </svg>
-        </div>
-        <span className="lock-nick">{state.dashboardAgent?.nick || 'visitor'}</span>
       </div>
     </div>
   );

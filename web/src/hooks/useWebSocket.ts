@@ -16,6 +16,10 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled:
       ? 'ws://localhost:3000/ws'
       : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
 
+    // Attach UI session token as a query param (browser WS API doesn't support custom headers)
+    const uiToken = sessionStorage.getItem('ui_token');
+    const wsUrlWithToken = uiToken ? `${wsUrl}?ui_token=${encodeURIComponent(uiToken)}` : wsUrl;
+
     let reconnectDelay = 2000;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -28,7 +32,7 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled:
       try { ws.current?.close(); } catch { /* ignore */ }
       if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
       if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
-      ws.current = new WebSocket(wsUrl);
+      ws.current = new WebSocket(wsUrlWithToken);
 
       ws.current.onopen = async () => {
         console.log('WebSocket connected');

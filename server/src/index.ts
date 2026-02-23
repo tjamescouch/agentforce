@@ -13,6 +13,9 @@ import { createFileStoreRoutes } from './filestore-routes.js';
 import { autoDetectProvider } from './llm/index.js';
 import { createLLMRoutes } from './llm-routes.js';
 import { apiAuth } from './api-auth.js';
+import { uiAuthMiddleware, handleUnlock, handleLock, handleStatus, validateUiToken } from './ui-auth.js';
+import { isPinConfigured } from './ui-auth.js';
+import { warmPinCache } from './ui-auth.js';
 
 const { encodeBase64, decodeBase64 } = tweetnaclUtil;
 
@@ -1436,7 +1439,7 @@ function handleDashboardMessage(client: DashboardClient, msg: DashboardMessage):
         connectClientToAgentChat(client);
         const content = (msg.data.content as string || '').trim();
         const sig = client.identity ? signMessageWithIdentity(content, client.identity) : null;
-        client.pendingMessages.push({ type: 'MSG', to: msg.data.to, content, sig });
+        client.pendingMessages.push({ type: 'MSG', to: msg.data.to as string, content, sig });
         client.ws.send(JSON.stringify({ type: 'message_queued', data: { to: msg.data.to } }));
         console.log(`send_message: queued message for ${client.id}, connection is being established`);
         break;
@@ -1446,7 +1449,7 @@ function handleDashboardMessage(client: DashboardClient, msg: DashboardMessage):
         if (client.agentChatWs.readyState !== WebSocket.OPEN || !client.agentId) {
           const content = (msg.data.content as string || '').trim();
           const sig = client.identity ? signMessageWithIdentity(content, client.identity) : null;
-          client.pendingMessages.push({ type: 'MSG', to: msg.data.to, content, sig });
+          client.pendingMessages.push({ type: 'MSG', to: msg.data.to as string, content, sig });
           client.ws.send(JSON.stringify({ type: 'message_queued', data: { to: msg.data.to } }));
           return;
         }
@@ -1456,7 +1459,7 @@ function handleDashboardMessage(client: DashboardClient, msg: DashboardMessage):
           return;
         }
         const sig = client.identity ? signMessageWithIdentity(content, client.identity) : null;
-        client.agentChatWs.send(JSON.stringify({ type: 'MSG', to: msg.data.to, content, sig }));
+        client.agentChatWs.send(JSON.stringify({ type: 'MSG', to: msg.data.to as string, content, sig }));
         client.ws.send(JSON.stringify({ type: 'message_sent', data: { success: true } }));
       }
       break;
@@ -1695,6 +1698,14 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
+// UI auth routes (always open — used by lock screen)
+app.get('/api/ui-auth/status', (req, res) => { handleStatus(req, res); });
+app.post('/api/ui-auth/unlock', express.json(), (req, res) => { handleUnlock(req, res); });
+app.post('/api/ui-auth/lock', (req, res) => { handleLock(req, res); });
+
+// Gate all other /api/* routes behind UI auth
+app.use('/api', (req: Request, res: Response, next: NextFunction) => { uiAuthMiddleware(req, res, next); });
+
 // Health endpoint
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({
@@ -1876,6 +1887,36 @@ const wss = new WebSocketServer({ server, path: '/ws', maxPayload: MAX_WS_MESSAG
 
 wss.on('connection', (ws, req) => {
   const ip = req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+
+  // Backend-enforced UI auth gate: validate session token from header or cookie
+  const uiToken =
+    (req.headers['x-ui-token'] as string | undefined) ||
+    (() => {
+      const cookieHeader = req.headers.cookie || '';
+      const match = cookieHeader.match(/(?:^|;\s*)ui_token=([^;]+)/);
+      return match ? match[1] : undefined;
+    })();
+
+  // Also check query param (browser WS API can't set custom headers)
+  const urlToken = (() => {
+    try {
+      const url = new URL(req.url || '', `http://localhost`);
+      return url.searchParams.get('ui_token') || undefined;
+    } catch { return undefined; }
+  })();
+
+  const effectiveToken = uiToken || urlToken;
+
+  // Backend-enforced gate: if PIN is configured, require a valid session token
+  if (isPinConfigured()) {
+    const valid = effectiveToken && (effectiveToken === 'open' || validateUiToken(effectiveToken));
+    if (!valid) {
+      ws.send(JSON.stringify({ type: 'error', data: { code: 'UI_AUTH_REQUIRED', message: 'Dashboard locked — authenticate first' } }));
+      ws.close(1008, 'Unauthorized');
+      return;
+    }
+  }
+
   const currentCount = ipConnectionCounts.get(ip) || 0;
 
   if (currentCount >= MAX_CONNECTIONS_PER_IP) {
@@ -1969,6 +2010,9 @@ setInterval(() => {
 loadAgentNames();
 identity = generateEphemeralIdentity('observer');
 connectToAgentChat(identity);
+
+// Warm the UI auth PIN cache so WebSocket auth works synchronously
+warmPinCache().catch(err => console.error('[ui-auth] Failed to warm PIN cache:', err));
 
 server.listen(PORT, () => {
   console.log(`Dashboard server running at http://localhost:${PORT}`);
