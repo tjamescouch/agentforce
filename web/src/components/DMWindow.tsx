@@ -4,6 +4,7 @@ import type { Agent, MessageAttachment } from '../types';
 import { DashboardContext } from '../context';
 import { getStoredIdentity } from '../identity';
 import { sodiumReady, deriveSharedSecret, encrypt, toBase64 } from '../crypto';
+filteredMessages.map((msg, idx) => (
 
 interface DMWindowProps {
   agent: Agent;
@@ -57,6 +58,15 @@ const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 const AUDIO_MIME_TYPES = ['audio/wav', 'audio/mpeg', 'audio/ogg', 'audio/flac', 'audio/webm'];
 
 export function DMWindow({ agent, onClose }: DMWindowProps) {
+  const [searchQuery, setSearchQuery] = React.useState('');
+
+  const filteredMessages = React.useMemo(() => {
+    if (!searchQuery.trim()) return messages;
+    return messages.filter(msg => 
+      msg.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      getNick(msg.from).toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [messages, searchQuery, getNick]);
   const ctx = useContext(DashboardContext);
   const [input, setInput] = React.useState('');
   const [attachments, setAttachments] = React.useState<MessageAttachment[]>([]);
@@ -270,6 +280,27 @@ export function DMWindow({ agent, onClose }: DMWindowProps) {
             {(agent as any).publicKey ? <span className="encrypted-badge" title="E2E Encrypted"> 🔒</span> : null}
           </span>
           <button className="dm-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="dm-search" style={{ padding: '8px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          <input
+            type="text"
+            placeholder="Search messages..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            style={{ 
+              width: '100%', 
+              padding: '4px 8px', 
+              background: 'rgba(0,0,0,0.5)', 
+              border: '1px solid rgba(255,255,255,0.2)', 
+              color: 'white', 
+              borderRadius: 4 
+            }}
+          />
+          {searchQuery && (
+            <span style={{ fontSize: 11, color: '#bdc3c7', marginLeft: 8 }}>
+              {filteredMessages.length} matches
+            </span>
+          )}
         </div>
         <div className="dm-messages">
           {messages.length === 0 && (
