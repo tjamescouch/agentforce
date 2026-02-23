@@ -8,7 +8,7 @@
  */
 
 import express, { Router, Request, Response } from 'express';
-import type { LLMProvider, LLMMessage } from './llm/index.js';
+import type { LLMProvider, LLMMessage, LLMContentPart } from './llm/index.js';
 
 export function createLLMRoutes(provider: LLMProvider): Router {
   const router = Router();
@@ -61,6 +61,14 @@ export function createLLMRoutes(provider: LLMProvider): Router {
         }
         if (!['system', 'user', 'assistant'].includes(msg.role)) {
           return res.status(400).json({ error: `Invalid role: ${msg.role}` });
+        }
+        // Validate multimodal content parts if array
+        if (Array.isArray(msg.content)) {
+          for (const part of msg.content as LLMContentPart[]) {
+            if (!part.type || !['text', 'image_url', 'input_audio'].includes(part.type)) {
+              return res.status(400).json({ error: `Invalid content part type: ${(part as any).type}` });
+            }
+          }
         }
       }
 

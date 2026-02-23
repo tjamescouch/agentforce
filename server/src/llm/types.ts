@@ -5,9 +5,36 @@
  * whether they're talking to Groq, OpenAI, Ollama, etc.
  */
 
+/** A text-only content part */
+export interface LLMTextPart {
+  type: 'text';
+  text: string;
+}
+
+/** An image content part (base64 or URL) */
+export interface LLMImagePart {
+  type: 'image_url';
+  image_url: {
+    url: string; // data:image/...;base64,... or https://...
+    detail?: 'auto' | 'low' | 'high';
+  };
+}
+
+/** An audio content part (base64, for supported providers) */
+export interface LLMAudioPart {
+  type: 'input_audio';
+  input_audio: {
+    data: string; // base64-encoded audio
+    format: 'wav' | 'mp3' | 'ogg' | 'flac' | 'webm';
+  };
+}
+
+export type LLMContentPart = LLMTextPart | LLMImagePart | LLMAudioPart;
+
 export interface LLMMessage {
   role: 'system' | 'user' | 'assistant';
-  content: string;
+  /** Content may be a plain string or an array of content parts (multimodal) */
+  content: string | LLMContentPart[];
 }
 
 export interface LLMCompletionRequest {
