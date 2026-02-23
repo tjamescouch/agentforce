@@ -1,3 +1,13 @@
+          {/* Emoji button */}
+          <button
+            title="Add emoji"
+            onClick={() => {
+              const emojis = ['😀', '😂', '❤️', '👍', '🔥', '🚀', '💯'];
+              const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+              setInput(prev => prev + randomEmoji);
+            }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, opacity: 0.7 }}
+          >😊</button>
 import React, { useRef, useEffect, useContext, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import type { Agent, MessageAttachment } from '../types';
