@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { DashboardState, DashboardAction, WsSendFn } from '../types';
 import { formatSize } from '../utils';
 
@@ -23,6 +23,12 @@ export function SaveModal({ state, dispatch, send }: SaveModalProps) {
   const handleCancel = () => {
     dispatch({ type: 'HIDE_SAVE_MODAL' });
   };
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') handleCancel(); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   return (
     <div className="modal-overlay" onClick={handleCancel}>
