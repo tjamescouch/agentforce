@@ -138,7 +138,7 @@ export function DMWindow({ agent, onClose }: DMWindowProps) {
           <input
             value={input}
             onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') handleSend(); }}
+            onKeyDown={e => { if (e.key === 'Enter') handleSend(); if (e.key === 'Escape') onClose(); }}
             placeholder="Type a message..."
             autoFocus
           />
