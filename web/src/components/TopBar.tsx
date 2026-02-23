@@ -61,6 +61,18 @@ export function TopBar({ state, dispatch, send, theme, setTheme }: TopBarProps) 
         >
           {themeIcon}
         </button>
+        {/* Analytics toggle */}
+        <button
+          className={`topbar-icon-btn ${state.analyticsOpen ? 'active' : ''}`}
+          onClick={() => dispatch({ type: 'TOGGLE_ANALYTICS' })}
+          title={state.analyticsOpen ? 'Hide analytics' : 'Show analytics'}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="1" y="9" width="3" height="6" rx="0.5" fill="currentColor"/>
+            <rect x="6" y="5" width="3" height="10" rx="0.5" fill="currentColor"/>
+            <rect x="11" y="1" width="3" height="14" rx="0.5" fill="currentColor"/>
+          </svg>
+        </button>
         <span className="logo">agentforce</span>
         <span className="topbar-version">v1.1.2</span>
         <span className={`status ${state.connected ? 'online' : 'offline'}`}>

@@ -104,6 +104,7 @@ export interface DashboardState {
   tasks: Task[];
   selectedTaskId: string | null;
   taskPanelOpen: boolean;
+  analyticsOpen: boolean;
 }
 
 export type DashboardAction =
@@ -151,7 +152,8 @@ export type DashboardAction =
   | { type: 'SET_RIGHT_PANEL_WIDTH'; width: number }
   | { type: 'DM_MESSAGE'; data: Message }
   | { type: 'CLEAR_DM_UNREAD'; agentId: string }
-  | { type: 'READ_RECEIPT'; data: { from: string; to: string; messageId?: string } };
+  | { type: 'READ_RECEIPT'; data: { from: string; to: string; messageId?: string } }
+  | { type: 'TOGGLE_ANALYTICS' };
 
 export interface StateSyncPayload {
   agents: Agent[];

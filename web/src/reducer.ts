@@ -87,6 +87,7 @@ export const initialState: DashboardState = {
   saveModal: null,
   logs: [],
   logsOpen: false,
+  analyticsOpen: false,
   lockScreen: false,
   sendError: null,
   activity: { agents: {}, totalMsgsPerMin: 0 },
@@ -202,6 +203,8 @@ export function reducer(state: DashboardState, action: DashboardAction): Dashboa
       return { ...state, logs: action.data.slice(-500) };
     case 'TOGGLE_LOGS':
       return { ...state, logsOpen: !state.logsOpen };
+    case 'TOGGLE_ANALYTICS':
+      return { ...state, analyticsOpen: !state.analyticsOpen };
     case 'CLEAR_LOGS':
       return { ...state, logs: [] };
     case 'SHOW_LOCK':

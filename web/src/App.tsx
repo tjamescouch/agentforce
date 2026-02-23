@@ -10,6 +10,7 @@ import { MessageFeed } from './components/MessageFeed';
 import { TaskPanel } from './components/TaskPanel';
 import { DropZone } from './components/DropZone';
 import { LogsPanel } from './components/LogsPanel';
+import { AnalyticsPanel } from './components/AnalyticsPanel';
 import { SendFileModal } from './components/SendFileModal';
 import { SaveModal } from './components/SaveModal';
 import { ConnectionOverlay } from './components/ConnectionOverlay';
@@ -86,6 +87,9 @@ export default function App() {
           )}
         </div>
         <SendFileModal state={state} dispatch={dispatch} send={send} />
+        {state.analyticsOpen && (
+          <AnalyticsPanel state={state} onClose={() => dispatch({ type: 'TOGGLE_ANALYTICS' })} />
+        )}
         <SaveModal state={state} dispatch={dispatch} send={send} />
         <ConnectionOverlay state={state} />
         <LockScreen state={state} dispatch={dispatch} />
