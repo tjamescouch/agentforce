@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { DashboardState, DashboardAction, WsSendFn } from '../types';
 import { agentColor, formatSize } from '../utils';
 
@@ -38,6 +38,12 @@ export function SendFileModal({ state, dispatch, send }: SendFileModalProps) {
     dispatch({ type: 'HIDE_SEND_MODAL' });
     setSelected(new Set());
   };
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') handleCancel(); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   return (
     <div className="modal-overlay" onClick={handleCancel}>
