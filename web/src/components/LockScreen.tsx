@@ -172,6 +172,9 @@ export function LockScreen({ onUnlocked }: LockScreenProps) {
             placeholder="Enter PIN"
             autoComplete="current-password"
             disabled={submitting}
+            maxLength={8}
+            inputMode="numeric"
+            pattern="\d{8}"
             style={{
               background: 'rgba(255,255,255,0.1)',
               border: error ? '1px solid rgba(255,80,80,0.8)' : '1px solid rgba(255,255,255,0.25)',
@@ -190,13 +193,13 @@ export function LockScreen({ onUnlocked }: LockScreenProps) {
           )}
           <button
             onClick={handleUnlock}
-            disabled={!pin.trim() || submitting}
+            disabled={pin.length !== 8 || submitting}
             style={{
               background: submitting ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.2)',
               border: '1px solid rgba(255,255,255,0.3)',
               borderRadius: 8,
               color: '#fff',
-              cursor: pin.trim() && !submitting ? 'pointer' : 'default',
+              cursor: pin.length === 8 && !submitting ? 'pointer' : 'default',
               fontSize: 14,
               padding: '8px 24px',
               transition: 'background 0.2s',
@@ -205,7 +208,7 @@ export function LockScreen({ onUnlocked }: LockScreenProps) {
             {submitting ? 'Unlocking…' : 'Unlock'}
           </button>
           <div className="lock-hint" style={{ marginTop: 4 }}>
-            Backend-enforced · Press Enter to unlock
+            Enter 8-digit PIN · Press Enter to unlock
           </div>
         </div>
       </div>

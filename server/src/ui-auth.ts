@@ -144,6 +144,12 @@ export async function handleUnlock(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  // Enforce 8-digit numeric PIN
+  if (!/^\d{8}$/.test(provided)) {
+    res.status(400).json({ error: 'PIN must be exactly 8 digits' });
+    return;
+  }
+
   purgeExpired();
 
   const a = Buffer.from(provided);
