@@ -21,6 +21,17 @@ export function DMWindow({ agent, onClose }: DMWindowProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const dragData = useRef<{ offsetX: number; offsetY: number; dragging: boolean }>({ offsetX: 0, offsetY: 0, dragging: false });
 
+  // Close on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   const messages = ctx?.state.dmThreads[agent.id] || [];
   const myId = ctx?.state.dashboardAgent?.id;
 
