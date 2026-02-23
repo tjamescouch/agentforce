@@ -44,6 +44,16 @@ export interface Message {
   ts: number;
 }
 
+export type AttachmentType = 'image' | 'audio';
+
+export interface MessageAttachment {
+  type: AttachmentType;
+  /** data URL: data:<mime>;base64,<data> */
+  dataUrl: string;
+  name?: string;
+  mimeType: string;
+}
+
 export interface DashboardAgent {
   id: string | null;
   nick: string;

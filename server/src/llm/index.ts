@@ -9,7 +9,7 @@
  *   4. Env var fallback (with warning)
  */
 
-export type { LLMProvider, LLMCompletionRequest, LLMCompletionResponse, LLMStreamChunk, LLMMessage, LLMProviderConfig } from './types.js';
+export type { LLMProvider, LLMCompletionRequest, LLMCompletionResponse, LLMStreamChunk, LLMMessage, LLMProviderConfig, LLMContentPart, LLMTextPart, LLMImagePart, LLMAudioPart } from './types.js';
 export { OpenAICompatibleProvider, OpenAICompatibleProvider as GroqProvider } from './groq.js';
 
 import type { LLMProvider, LLMProviderConfig } from './types.js';
