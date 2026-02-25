@@ -47,6 +47,12 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled:
           socket.send(JSON.stringify({ type: 'ping' }));
         }, 15000);
 
+        // Restore persisted bad channels so server skips them in WELCOME join loop
+        const storedBadChannels = JSON.parse(localStorage.getItem('badChannels') || '[]');
+        if (storedBadChannels.length > 0) {
+          ws.current!.send(JSON.stringify({ type: 'restore_bad_channels', data: { channels: storedBadChannels } }));
+        }
+
         const storedNick = localStorage.getItem('dashboardNick');
         const identity = await getOrCreateIdentity().catch(err => {
           console.error('Failed to generate identity:', err);
@@ -144,6 +150,18 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled:
           case 'nick_changed':
             dispatch({ type: 'NICK_CHANGED', nick: msg.data.nick });
             break;
+          case 'bad_channel': {
+            // Server detected a non-existent channel — persist so we skip it on future reconnects
+            const badCh: string = msg.data.channel;
+            if (badCh) {
+              const existing: string[] = JSON.parse(localStorage.getItem('badChannels') || '[]');
+              if (!existing.includes(badCh)) {
+                existing.push(badCh);
+                localStorage.setItem('badChannels', JSON.stringify(existing));
+              }
+            }
+            break;
+          }
           case 'file_offer':
             dispatch({
               type: 'TRANSFER_UPDATE',

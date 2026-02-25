@@ -1,0 +1,3 @@
+PATCH_A_LINE=1108
+PATCH_A_AFTER=client._badChannels.add(badCh);
+PATCH_B_LINE=1556

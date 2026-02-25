@@ -1107,6 +1107,10 @@ function handlePerSessionMessage(client: DashboardClient, msg: AgentChatMsg): vo
           const badCh = match[0];
           client._badChannels.add(badCh);
           console.log(`Per-session ${client.id}: added ${badCh} to bad-channel list (will skip on reconnect)`);
+          // Notify browser to persist this in localStorage so it survives server restarts.
+          if (client.ws.readyState === WebSocket.OPEN) {
+            client.ws.send(JSON.stringify({ type: 'bad_channel', data: { channel: badCh } }));
+          }
         }
       }
       if (client.ws.readyState === WebSocket.OPEN) {
@@ -1550,6 +1554,21 @@ function handleDashboardMessage(client: DashboardClient, msg: DashboardMessage):
       }
       client.mode = newMode;
       client.ws.send(JSON.stringify({ type: 'mode_changed', data: { mode: client.mode } }));
+      break;
+    }
+
+    case 'restore_bad_channels': {
+      // Browser sends previously persisted bad channels on reconnect so the server
+      // skips them in the WELCOME join loop even after a server restart.
+      const { channels: badList } = msg.data as { channels: string[] };
+      if (Array.isArray(badList)) {
+        for (const ch of badList) {
+          if (typeof ch === 'string' && ch.startsWith('#')) {
+            client._badChannels.add(ch);
+          }
+        }
+        console.log(`Per-session ${client.id}: restored ${badList.length} bad channel(s) from browser localStorage`);
+      }
       break;
     }
 
