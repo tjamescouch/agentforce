@@ -4,6 +4,7 @@ import type { Agent, MessageAttachment } from '../types';
 import { DashboardContext } from '../context';
 import { getStoredIdentity } from '../identity';
 import { sodiumReady, deriveSharedSecret, encrypt, toBase64 } from '../crypto';
+import { VideoCallWindow } from './VideoCallWindow';
 
 interface DMWindowProps {
   agent: Agent;
@@ -62,6 +63,8 @@ export function DMWindow({ agent, onClose }: DMWindowProps) {
   const [attachments, setAttachments] = React.useState<MessageAttachment[]>([]);
   const [recording, setRecording] = React.useState(false);
   const [recordError, setRecordError] = React.useState<string | null>(null);
+  const [showMediaMenu, setShowMediaMenu] = React.useState(false);
+  const [showVideoCall, setShowVideoCall] = React.useState(false);
   const windowRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -342,12 +345,7 @@ export function DMWindow({ agent, onClose }: DMWindowProps) {
             style={{ flex: 1 }}
           />
 
-          {/* Attach file button */}
-          <button
-            title="Attach image or audio"
-            onClick={() => fileInputRef.current?.click()}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, opacity: 0.7 }}
-          >📎</button>
+          {/* Hidden file input */}
           <input
             ref={fileInputRef}
             type="file"
@@ -357,25 +355,68 @@ export function DMWindow({ agent, onClose }: DMWindowProps) {
             onChange={handleFileChange}
           />
 
-          {/* Record audio button */}
-          {!recording ? (
+          {/* Unified media button */}
+          <div className="dm-input-actions">
             <button
-              title="Record audio"
-              onClick={startRecording}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, opacity: 0.7 }}
-            >🎙️</button>
-          ) : (
-            <button
-              title="Stop recording"
-              onClick={stopRecording}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, animation: 'pulse 1s infinite' }}
-            >⏹️</button>
-          )}
+              className="media-toggle-btn"
+              title="Attach media"
+              onClick={() => setShowMediaMenu(prev => !prev)}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <line x1="8" y1="3" x2="8" y2="13" />
+                <line x1="3" y1="8" x2="13" y2="8" />
+              </svg>
+            </button>
+            {showMediaMenu && (
+              <div className="media-menu">
+                <button
+                  className="media-menu-btn"
+                  onClick={() => { fileInputRef.current?.click(); setShowMediaMenu(false); }}
+                >
+                  Attach file
+                </button>
+                {!recording ? (
+                  <button
+                    className="media-menu-btn"
+                    onClick={() => { startRecording(); setShowMediaMenu(false); }}
+                  >
+                    Record audio
+                  </button>
+                ) : (
+                  <button
+                    className="media-menu-btn"
+                    onClick={() => { stopRecording(); setShowMediaMenu(false); }}
+                    style={{ color: 'var(--accent-red)' }}
+                  >
+                    Stop recording
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Video call button */}
+          <button
+            className="video-call-btn"
+            title="Video call"
+            onClick={() => setShowVideoCall(true)}
+          >
+            <svg viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M12 5a7 7 0 0 1 7 7" />
+              <path d="M12 5a7 7 0 0 0-7 7" />
+              <path d="M12 19a7 7 0 0 1-7-7" />
+              <path d="M12 19a7 7 0 0 0 7-7" />
+            </svg>
+          </button>
         </div>
         {recordError && (
           <div style={{ color: '#e74c3c', fontSize: 11, padding: '2px 8px' }}>{recordError}</div>
         )}
       </div>
+      {showVideoCall && (
+        <VideoCallWindow agent={agent} onClose={() => setShowVideoCall(false)} />
+      )}
     </>,
     document.body
   );
