@@ -162,6 +162,16 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled:
             }
             break;
           }
+          case 'channel_recovered': {
+            // A previously-bad channel now exists — remove from localStorage so we rejoin next session
+            const recoveredCh: string = msg.data.channel;
+            if (recoveredCh) {
+              const existing: string[] = JSON.parse(localStorage.getItem('badChannels') || '[]');
+              const updated = existing.filter((c: string) => c !== recoveredCh);
+              localStorage.setItem('badChannels', JSON.stringify(updated));
+            }
+            break;
+          }
           case 'file_offer':
             dispatch({
               type: 'TRANSFER_UPDATE',

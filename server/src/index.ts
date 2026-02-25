@@ -142,6 +142,8 @@ interface DashboardClient {
   _reconnectCount: number;
   /** Timestamp when the current failure run started */
   _reconnectSince: number;
+  /** Bad channels being probed this session to see if they now exist */
+  _probingChannels: Set<string>;
 }
 
 interface AgentChatMsg {
@@ -1009,7 +1011,9 @@ function handlePerSessionMessage(client: DashboardClient, msg: AgentChatMsg): vo
           }
         }));
       }
-      // Join channels the observer is already in (skip restricted or previously bad channels)
+      // Join channels the observer is already in (skip restricted channels).
+      // Bad channels: probe once per session — if the channel now exists, join it and
+      // remove from the bad list so the browser can clear it from localStorage.
       const restrictedChannels = new Set(["#ops"]);
       for (const channelName of state.channels.keys()) {
         if (!restrictedChannels.has(channelName) && !client._badChannels.has(channelName)) {
@@ -1017,8 +1021,15 @@ function handlePerSessionMessage(client: DashboardClient, msg: AgentChatMsg): vo
             type: "JOIN",
             channel: channelName
           }));
-        } else if (client._badChannels.has(channelName)) {
-          console.log(`Per-session ${client.id}: skipping bad channel ${channelName} on reconnect`);
+        }
+      }
+      // Probe bad channels once per session (they might have been created since last visit)
+      for (const badCh of client._badChannels) {
+        if (!restrictedChannels.has(badCh)) {
+          console.log(`Per-session ${client.id}: probing previously-bad channel ${badCh}`);
+          client._probingChannels = client._probingChannels || new Set<string>();
+          client._probingChannels.add(badCh);
+          client.agentChatWs?.send(JSON.stringify({ type: "JOIN", channel: badCh }));
         }
       }
       break;
@@ -1041,9 +1052,19 @@ function handlePerSessionMessage(client: DashboardClient, msg: AgentChatMsg): vo
       break;
     }
 
-    case 'JOINED':
-      // Per-session joined a channel — no extra state tracking needed
+    case 'JOINED': {
+      // If this channel was being probed (previously bad), clear it from the bad list
+      const joinedCh = msg.channel as string | undefined;
+      if (joinedCh && client._probingChannels?.has(joinedCh)) {
+        client._probingChannels.delete(joinedCh);
+        client._badChannels.delete(joinedCh);
+        console.log(`Per-session ${client.id}: ${joinedCh} now exists — removed from bad-channel list`);
+        if (client.ws.readyState === WebSocket.OPEN) {
+          client.ws.send(JSON.stringify({ type: 'channel_recovered', data: { channel: joinedCh } }));
+        }
+      }
       break;
+    }
 
     case 'MSG':
       // Check if this is a file transfer protocol DM (offer/accept/reject/complete/ack)
@@ -1984,6 +2005,7 @@ wss.on('connection', (ws, req) => {
     pendingMessages: [],
     _reconnectBackoff: 2000,
     _badChannels: new Set<string>(),
+    _probingChannels: new Set<string>(),
     _reconnectCount: 0,
     _reconnectSince: 0,
   };
