@@ -21,8 +21,10 @@ COPY web/ ./web/
 # Build web frontend (outputs to server/public/)
 RUN cd web && npm run build
 
-# Bundle 3D model assets (served as static files)
-COPY server/cache/models/ ./server/public/models/
+# Download 3D model assets (Git LFS files can't be copied from repo directly)
+RUN mkdir -p server/public/models && \
+    wget -q -O server/public/models/ellie_animation.glb \
+    "https://github.com/tjamescouch/personas/raw/refs/heads/main/ellie/ellie_animation.glb"
 
 # Server runs via tsx from source
 EXPOSE 3000
