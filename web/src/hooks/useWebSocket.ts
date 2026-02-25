@@ -217,6 +217,14 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled:
           case 'offer_sent':
           case 'transfer_sent':
             break;
+          case 'message_queued':
+            // Server queued our message while per-session AgentChat connection is being established
+            dispatch({ type: 'SEND_ERROR', error: 'Message queued — will send when connection is ready' });
+            break;
+          case 'message_sent':
+            // Server confirmed the message was delivered; clear any queued/error state
+            dispatch({ type: 'CLEAR_SEND_ERROR' });
+            break;
           case 'save_complete':
             dispatch({ type: 'HIDE_SAVE_MODAL' });
             break;
@@ -285,6 +293,10 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled:
       setSend(() => (msg: Record<string, unknown>) => {
         if (ws.current?.readyState === WebSocket.OPEN) {
           ws.current.send(JSON.stringify(msg));
+        } else {
+          // Surface a warning — server will queue via pendingMessages on reconnect
+          dispatch({ type: 'SEND_ERROR', error: 'Reconnecting — message will be sent when connection restores' });
+          setTimeout(() => dispatch({ type: 'CLEAR_SEND_ERROR' }), 5000);
         }
       });
     }
