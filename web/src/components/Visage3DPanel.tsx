@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -6,6 +6,8 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import type { Agent, Message } from '../types';
 import type { StateVector } from '../emotion';
 import { useEmotionStream } from '../hooks/useEmotionStream';
+import { useAvatarStream } from '../hooks/useAvatarStream';
+import type { AvatarClipCommand } from '../hooks/useAvatarStream';
 import { EmotionDriver, IdleAnimator } from '../emotion';
 import type { MocapPts } from '../emotion';
 
@@ -410,9 +412,58 @@ function createMaterial(category: string): THREE.MeshStandardMaterial {
   }
 }
 
+// ── Avatar clip categorization ──
+
+const MORPH_ONLY_CLIPS = new Set([
+  // Face expressions
+  'Ellie face default', 'Ellie face excited', 'Ellie face awkward',
+  'Ellie face scared', 'Ellie face scared2', 'Ellie face annoyed',
+  'Ellie face suspicious', 'Ellie face squint', 'Ellie face wissle',
+  // Eye masks
+  'Ellie eyemask angry', 'Ellie eyemask closed', 'Ellie eyemask concerned',
+  'Ellie eyemask content', 'Ellie eyemask relaxed', 'Ellie eyemask squint',
+  'Ellie eymask scared',
+  // Mouth
+  'Ellie Mouth Aa', 'Ellie mouth Ee', 'Ellie mouth Eh',
+  'Ellie mouth Oo', 'Ellie mouth Uu', 'Ellie mouth squeeze',
+  'Ellie mouth smileclosed', 'Ellie mouth smileclosed2', 'Ellie mouth smileopen',
+  // Rig controls
+  'RIG.Ellie_Eyelid_Upper_Close-Open', 'RIG.Ellie_Eyebrows_Down',
+  'RIG.Ellie_Eyelid_Lower_Close-Open',
+]);
+
+const FULL_BODY_CLIPS = new Set([
+  'Ellie full angry', 'Ellie full cheerful', 'Ellie full relaxed',
+  'Ellie full scared', 'Ellie full waving',
+]);
+
+// All clips the animation system should prepare actions for
+const ALL_AVATAR_CLIPS = new Set([...MORPH_ONLY_CLIPS, ...FULL_BODY_CLIPS]);
+
+// Sigmoid smoothstep for natural transitions
+function sigmoid(t: number): number {
+  const c = Math.max(0, Math.min(1, t));
+  return c * c * (3 - 2 * c);
+}
+
+// Crossfade state machine types
+type AnimState = 'idle' | 'fade_to_idle' | 'fade_to_target' | 'holding';
+
+interface CrossfadeState {
+  state: AnimState;
+  queue: Array<Record<string, number>>;
+  currentAction: THREE.AnimationAction | null;
+  targetAction: THREE.AnimationAction | null;
+  transitionT: number;
+  holdTimer: number;
+  fadeDuration: number;    // seconds per fade phase
+  holdDuration: number;    // seconds to hold each pose
+  poseClips: Map<THREE.AnimationAction, Record<string, number>>;
+}
+
 /**
- * Visage3DPanel — Three.js GLB avatar renderer with emotion-driven morph targets.
- * Drop-in replacement for the 2D VisagePanel canvas renderer.
+ * Visage3DPanel — Three.js GLB avatar renderer with emotion-driven morph targets
+ * and avatar clip animation from @@[clip:weight]@@ markers.
  */
 export function Visage3DPanel({ agent, messages, modelUrl, onFallback, fillContainer }: Visage3DPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -430,11 +481,34 @@ export function Visage3DPanel({ agent, messages, modelUrl, onFallback, fillConta
   const lastFrameRef = useRef(Date.now());
   const disposedRef = useRef(false);
 
+  // Avatar clip animation refs
+  const clipActionsRef = useRef<Record<string, THREE.AnimationAction>>({});
+  const clipTargetWeightsRef = useRef<Record<string, number>>({});
+  const clipsByNameRef = useRef<Record<string, THREE.AnimationClip>>({});
+  const idleActionRef = useRef<THREE.AnimationAction | null>(null);
+  const crossfadeRef = useRef<CrossfadeState>({
+    state: 'idle',
+    queue: [],
+    currentAction: null,
+    targetAction: null,
+    transitionT: 0,
+    holdTimer: 0,
+    fadeDuration: 0.5,
+    holdDuration: 2.0,
+    poseClips: new Map(),
+  });
+  const avatarQueueIdxRef = useRef(0);
+  const lastCommandTimeRef = useRef(0);
+  const COMMAND_INTERVAL = 500; // ms between consuming queued commands
+
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [loadProgress, setLoadProgress] = useState(0);
   const [morphCount, setMorphCount] = useState(0);
 
   const emotionState = useEmotionStream(messages, agent.id);
+  const avatarQueue = useAvatarStream(messages, agent.id);
+  const avatarQueueRef = useRef(avatarQueue);
+  avatarQueueRef.current = avatarQueue;
 
   // Update driver when emotion state changes
   useEffect(() => {
@@ -558,21 +632,64 @@ export function Visage3DPanel({ agent, messages, modelUrl, onFallback, fillConta
         }
         setMorphCount(names.size);
 
-        // Animations — play idle, strip bone tracks from face clips
+        // Animations — play idle, prepare avatar clip actions
         if (gltf.animations.length > 0) {
           const mixer = new THREE.AnimationMixer(gltf.scene);
+
+          // Index all clips by name
+          const clipsByName: Record<string, THREE.AnimationClip> = {};
+          for (const clip of gltf.animations) clipsByName[clip.name] = clip;
+          clipsByNameRef.current = clipsByName;
 
           // Find and play idle animation
           const idleClip = gltf.animations.find(c => c.name === 'ANI-ellie.idle');
           if (idleClip) {
             const action = mixer.clipAction(idleClip);
+            action.setEffectiveWeight(1.0);
             action.setLoop(THREE.LoopRepeat, Infinity);
             action.play();
+            idleActionRef.current = action;
           } else {
             // Fallback: play first animation
             const action = mixer.clipAction(gltf.animations[0]);
             action.play();
           }
+
+          // Prepare morph-only clip actions (strip bone tracks, keep morphTargetInfluences)
+          const actions: Record<string, THREE.AnimationAction> = {};
+          for (const [name, clip] of Object.entries(clipsByName)) {
+            if (name === 'ANI-ellie.idle') continue;
+            if (!MORPH_ONLY_CLIPS.has(name)) continue;
+
+            const safeClip = clip.clone();
+            safeClip.tracks = safeClip.tracks.filter((track) => {
+              const prop = track.name.split('.').pop();
+              return prop === 'morphTargetInfluences';
+            });
+            if (safeClip.tracks.length === 0) continue;
+
+            const action = mixer.clipAction(safeClip);
+            action.setEffectiveWeight(0);
+            action.setLoop(THREE.LoopRepeat, Infinity);
+            action.play();
+            actions[name] = action;
+          }
+          clipActionsRef.current = actions;
+
+          // Reset crossfade state
+          crossfadeRef.current = {
+            state: 'idle',
+            queue: [],
+            currentAction: null,
+            targetAction: null,
+            transitionT: 0,
+            holdTimer: 0,
+            fadeDuration: 0.5,
+            holdDuration: 2.0,
+            poseClips: new Map(),
+          };
+          avatarQueueIdxRef.current = 0;
+          lastCommandTimeRef.current = 0;
 
           mixerRef.current = mixer;
         }
@@ -592,6 +709,130 @@ export function Visage3DPanel({ agent, messages, modelUrl, onFallback, fillConta
       },
     );
 
+    // ── Crossfade helpers (full-body clips) ──
+
+    function createFullBodyAction(clips: Record<string, number>): THREE.AnimationAction | null {
+      const mixer = mixerRef.current;
+      const clipsByName = clipsByNameRef.current;
+      if (!mixer) return null;
+
+      let bestAction: THREE.AnimationAction | null = null;
+      let bestWeight = 0;
+      const poseClips: Record<string, number> = {};
+
+      for (const [name, weight] of Object.entries(clips)) {
+        if (!FULL_BODY_CLIPS.has(name)) continue;
+        const clip = clipsByName[name];
+        if (!clip) continue;
+        const action = mixer.clipAction(clip);
+        action.reset();
+        action.setEffectiveWeight(0);
+        action.setLoop(THREE.LoopOnce, 1);
+        action.clampWhenFinished = true;
+        action.play();
+        poseClips[name] = weight;
+        if (weight > bestWeight) { bestAction = action; bestWeight = weight; }
+      }
+
+      if (bestAction) {
+        crossfadeRef.current.poseClips.set(bestAction, poseClips);
+      }
+      return bestAction;
+    }
+
+    function setFullBodyActionWeights(action: THREE.AnimationAction, blend: number) {
+      const mixer = mixerRef.current;
+      const clipsByName = clipsByNameRef.current;
+      if (!mixer) return;
+      const poseClips = crossfadeRef.current.poseClips.get(action);
+      if (poseClips) {
+        for (const [name, weight] of Object.entries(poseClips)) {
+          const clip = clipsByName[name];
+          if (!clip) continue;
+          mixer.clipAction(clip).setEffectiveWeight(weight * blend);
+        }
+      } else {
+        action.setEffectiveWeight(blend);
+      }
+    }
+
+    function startNextTransition() {
+      const cs = crossfadeRef.current;
+      const idle = idleActionRef.current;
+
+      if (cs.queue.length === 0) {
+        cs.targetAction = null;
+        if (cs.state === 'holding' && cs.currentAction) {
+          cs.state = 'fade_to_idle';
+          cs.transitionT = 0;
+        } else {
+          cs.state = 'idle';
+        }
+        return;
+      }
+
+      const clips = cs.queue.shift()!;
+      const targetAction = createFullBodyAction(clips);
+      if (!targetAction) {
+        startNextTransition();
+        return;
+      }
+      cs.targetAction = targetAction;
+
+      if (cs.state === 'idle') {
+        cs.state = 'fade_to_target';
+        cs.transitionT = 0;
+      } else {
+        cs.state = 'fade_to_idle';
+        cs.transitionT = 0;
+      }
+    }
+
+    function updateCrossfade(dt: number) {
+      const cs = crossfadeRef.current;
+      const idle = idleActionRef.current;
+      if (cs.state === 'idle') return;
+
+      const step = dt / cs.fadeDuration;
+
+      if (cs.state === 'fade_to_idle') {
+        cs.transitionT += step;
+        const t = sigmoid(cs.transitionT);
+        if (cs.currentAction) setFullBodyActionWeights(cs.currentAction, 1 - t);
+        if (idle) idle.setEffectiveWeight(t);
+        if (cs.transitionT >= 1) {
+          if (cs.currentAction) setFullBodyActionWeights(cs.currentAction, 0);
+          if (idle) idle.setEffectiveWeight(1);
+          cs.currentAction = null;
+          if (cs.targetAction) {
+            cs.state = 'fade_to_target';
+            cs.transitionT = 0;
+          } else {
+            cs.state = 'idle';
+            cs.queue = [];
+          }
+        }
+      } else if (cs.state === 'fade_to_target') {
+        cs.transitionT += step;
+        const t = sigmoid(cs.transitionT);
+        if (idle) idle.setEffectiveWeight(1 - t);
+        if (cs.targetAction) setFullBodyActionWeights(cs.targetAction, t);
+        if (cs.transitionT >= 1) {
+          if (idle) idle.setEffectiveWeight(0);
+          if (cs.targetAction) setFullBodyActionWeights(cs.targetAction, 1);
+          cs.currentAction = cs.targetAction;
+          cs.targetAction = null;
+          cs.state = 'holding';
+          cs.holdTimer = cs.holdDuration;
+        }
+      } else if (cs.state === 'holding') {
+        cs.holdTimer -= dt;
+        if (cs.holdTimer <= 0) {
+          startNextTransition();
+        }
+      }
+    }
+
     // Render loop
     const animate = () => {
       if (disposedRef.current) return;
@@ -602,14 +843,65 @@ export function Visage3DPanel({ agent, messages, modelUrl, onFallback, fillConta
       const dt = Math.min((now - lastFrameRef.current) / 1000, 0.1);
       lastFrameRef.current = now;
 
-      // Get current emotion frame
+      // ── Consume avatar clip queue at throttled rate ──
+      const queue = avatarQueueRef.current;
+      if (queue.length > avatarQueueIdxRef.current &&
+          now - lastCommandTimeRef.current >= COMMAND_INTERVAL) {
+        const cmd = queue[avatarQueueIdxRef.current];
+        avatarQueueIdxRef.current++;
+        lastCommandTimeRef.current = now;
+
+        // Separate morph-only vs full-body clips
+        const morphClips: Record<string, number> = {};
+        const bodyClips: Record<string, number> = {};
+        for (const [name, weight] of Object.entries(cmd.clips)) {
+          if (MORPH_ONLY_CLIPS.has(name)) {
+            morphClips[name] = weight;
+          } else if (FULL_BODY_CLIPS.has(name)) {
+            bodyClips[name] = weight;
+          }
+        }
+
+        // Set morph-only target weights
+        if (Object.keys(morphClips).length > 0) {
+          // Reset all morph clip targets to 0, then set active ones
+          const targets = clipTargetWeightsRef.current;
+          for (const name of Object.keys(targets)) targets[name] = 0;
+          for (const [name, weight] of Object.entries(morphClips)) {
+            targets[name] = weight;
+          }
+        }
+
+        // Queue full-body clips for crossfade
+        if (Object.keys(bodyClips).length > 0) {
+          const cs = crossfadeRef.current;
+          if (cs.queue.length >= 3) cs.queue.shift();
+          cs.queue.push(bodyClips);
+          if (cs.state === 'idle') startNextTransition();
+        }
+      }
+
+      // ── Lerp morph-only clip weights toward targets ──
+      const actions = clipActionsRef.current;
+      const targetWeights = clipTargetWeightsRef.current;
+      for (const [name, action] of Object.entries(actions)) {
+        const target = targetWeights[name] ?? 0;
+        const current = action.getEffectiveWeight();
+        const isMouth = name.includes('outh') || name.includes('squeeze');
+        const speed = isMouth ? 18 : 6;
+        const next = current + (target - current) * Math.min(1, speed * dt);
+        action.setEffectiveWeight(next);
+      }
+
+      // ── Drive full-body crossfade state machine ──
+      updateCrossfade(dt);
+
+      // ── Emotion-driven morph targets (fallback when no avatar markers active) ──
       const frame = driverRef.current.frame();
       idleRef.current.apply(frame.pts, dt);
-
-      // Map to morph targets
       const targets = mocapToMorphTargets(frame.pts);
 
-      // Apply to meshes
+      // Apply emotion morph targets to meshes
       for (const mesh of morphMeshesRef.current) {
         const dict = mesh.morphTargetDictionary;
         const influences = mesh.morphTargetInfluences;
@@ -648,6 +940,10 @@ export function Visage3DPanel({ agent, messages, modelUrl, onFallback, fillConta
         renderer.domElement.parentElement.removeChild(renderer.domElement);
       }
       morphMeshesRef.current = [];
+      clipActionsRef.current = {};
+      clipTargetWeightsRef.current = {};
+      clipsByNameRef.current = {};
+      idleActionRef.current = null;
     };
   }, [modelUrl]);
 
