@@ -18,10 +18,13 @@ const MARKER_EMOJI: Record<string, string> = {
  * function-form markers (@@thinking(0.7)@@, @@think@@, @@relax@@).
  * Unknown markers get 🧠. Control markers (model-change, ref, etc) are stripped silently.
  */
-function replaceMarkers(content: string): string {
+export function replaceMarkers(content: string): string {
   const CONTROL = /^(model-change|ref|unref|importance|ctrl|mem)/;
 
-  return content.replace(/@@([^@]+)@@/g, (_match, payload: string) => {
+  // Strip avatar markers @@[clip:weight, ...]@@ → 🎭
+  let result = content.replace(/@@\[[^\]@]+\]@@/g, '🎭');
+
+  return result.replace(/@@([^@]+)@@/g, (_match, payload: string) => {
     const trimmed = payload.trim();
 
     // Control markers: strip entirely

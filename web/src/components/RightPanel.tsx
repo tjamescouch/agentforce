@@ -1,6 +1,6 @@
 import { useState, FormEvent, lazy, Suspense } from 'react';
 import type { DashboardState, DashboardAction, WsSendFn } from '../types';
-import { agentColor, formatMsgRate, displayName, shortId } from '../utils';
+import { agentColor, formatMsgRate, displayName, shortId, replaceMarkers } from '../utils';
 import { VisagePanel } from './VisagePanel';
 
 const Visage3DPanel = lazy(() =>
@@ -242,7 +242,7 @@ export function RightPanel({ state, dispatch, send, panelWidth }: RightPanelProp
             {dmThread.map((m, i) => (
               <div key={i} className={`dm-msg ${m.from === state.dashboardAgent?.id ? 'mine' : 'theirs'}`}>
                 <div className="dm-msg-meta"><span className="dm-from">{m.from === state.dashboardAgent?.id ? 'You' : m.fromNick || m.from}</span> <span className="dm-ts">{new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
-                <div className="dm-msg-body">{m.content}</div>
+                <div className="dm-msg-body">{replaceMarkers(m.content)}</div>
               </div>
             ))}
           </div>

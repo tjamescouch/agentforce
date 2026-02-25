@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import type { Agent, MessageAttachment } from '../types';
 import { DashboardContext } from '../context';
 import { getStoredIdentity } from '../identity';
+import { replaceMarkers } from '../utils';
 import { sodiumReady, deriveSharedSecret, encrypt, toBase64 } from '../crypto';
 import { VideoCallWindow } from './VideoCallWindow';
 
@@ -282,7 +283,7 @@ export function DMWindow({ agent, onClose }: DMWindowProps) {
             <div key={idx} className="dm-message">
               <span className="dm-msg-time">{formatTime(msg.ts)}</span>
               <span className="dm-msg-from">{getNick(msg.from)}</span>
-              <span>{msg.content}</span>
+              <span>{replaceMarkers(msg.content)}</span>
               {(msg as any).attachments?.map((att: MessageAttachment, ai: number) => (
                 <span key={ai} className="dm-attachment">
                   {att.type === 'image' && (

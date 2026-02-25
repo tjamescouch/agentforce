@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import type { Agent } from '../types';
 import { DashboardContext } from '../context';
 import { getStoredIdentity } from '../identity';
+import { replaceMarkers } from '../utils';
 import { sodiumReady, deriveSharedSecret, encrypt, toBase64 } from '../crypto';
 
 const Visage3DPanel = lazy(() =>
@@ -134,7 +135,7 @@ export function VideoCallWindow({ agent, onClose }: VideoCallWindowProps) {
                 <div key={idx} className="dm-message">
                   <span className="dm-msg-time">{formatTime(msg.ts)}</span>
                   <span className="dm-msg-from">{getNick(msg.from)}</span>
-                  <span>{msg.content}</span>
+                  <span>{replaceMarkers(msg.content)}</span>
                 </div>
               ))}
               <div ref={messagesEndRef} />
