@@ -334,18 +334,58 @@ export function DMWindow({ agent, onClose }: DMWindowProps) {
           </div>
         )}
 
-        <div className="dm-input" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <input
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') handleSend(); if (e.key === 'Escape') onClose(); }}
-            onPaste={handlePaste}
-            placeholder={attachments.length > 0 ? 'Add a caption… (Enter to send)' : 'Type a message or paste an image…'}
-            autoFocus
-            style={{ flex: 1 }}
-          />
-
-          {/* Hidden file input */}
+        <div className="dm-input">
+          <div className="dm-input-wrap">
+            <input
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleSend(); if (e.key === 'Escape') onClose(); }}
+              onPaste={handlePaste}
+              placeholder={attachments.length > 0 ? 'Add a caption…' : 'Type a message…'}
+              autoFocus
+            />
+            <button
+              className="dm-action-btn"
+              title="Media & actions"
+              onClick={() => setShowMediaMenu(prev => !prev)}
+            >
+              <svg viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M12 5a7 7 0 0 1 7 7" />
+                <path d="M12 5a7 7 0 0 0-7 7" />
+                <path d="M12 19a7 7 0 0 1-7-7" />
+                <path d="M12 19a7 7 0 0 0 7-7" />
+              </svg>
+            </button>
+            {showMediaMenu && (
+              <div className="dm-action-menu">
+                <button
+                  className="dm-action-menu-item"
+                  title="Attach file"
+                  onClick={() => { fileInputRef.current?.click(); setShowMediaMenu(false); }}
+                >📎</button>
+                {!recording ? (
+                  <button
+                    className="dm-action-menu-item"
+                    title="Record audio"
+                    onClick={() => { startRecording(); setShowMediaMenu(false); }}
+                  >🎙️</button>
+                ) : (
+                  <button
+                    className="dm-action-menu-item"
+                    title="Stop recording"
+                    onClick={() => { stopRecording(); setShowMediaMenu(false); }}
+                    style={{ color: 'var(--accent-red)' }}
+                  >⏹️</button>
+                )}
+                <button
+                  className="dm-action-menu-item"
+                  title="Video call"
+                  onClick={() => { setShowVideoCall(true); setShowMediaMenu(false); }}
+                >🎥</button>
+              </div>
+            )}
+          </div>
           <input
             ref={fileInputRef}
             type="file"
@@ -354,61 +394,6 @@ export function DMWindow({ agent, onClose }: DMWindowProps) {
             style={{ display: 'none' }}
             onChange={handleFileChange}
           />
-
-          {/* Unified media button */}
-          <div className="dm-input-actions">
-            <button
-              className="media-toggle-btn"
-              title="Attach media"
-              onClick={() => setShowMediaMenu(prev => !prev)}
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                <line x1="8" y1="3" x2="8" y2="13" />
-                <line x1="3" y1="8" x2="13" y2="8" />
-              </svg>
-            </button>
-            {showMediaMenu && (
-              <div className="media-menu">
-                <button
-                  className="media-menu-btn"
-                  onClick={() => { fileInputRef.current?.click(); setShowMediaMenu(false); }}
-                >
-                  Attach file
-                </button>
-                {!recording ? (
-                  <button
-                    className="media-menu-btn"
-                    onClick={() => { startRecording(); setShowMediaMenu(false); }}
-                  >
-                    Record audio
-                  </button>
-                ) : (
-                  <button
-                    className="media-menu-btn"
-                    onClick={() => { stopRecording(); setShowMediaMenu(false); }}
-                    style={{ color: 'var(--accent-red)' }}
-                  >
-                    Stop recording
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Video call button */}
-          <button
-            className="video-call-btn"
-            title="Video call"
-            onClick={() => setShowVideoCall(true)}
-          >
-            <svg viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M12 5a7 7 0 0 1 7 7" />
-              <path d="M12 5a7 7 0 0 0-7 7" />
-              <path d="M12 19a7 7 0 0 1-7-7" />
-              <path d="M12 19a7 7 0 0 0 7-7" />
-            </svg>
-          </button>
         </div>
         {recordError && (
           <div style={{ color: '#e74c3c', fontSize: 11, padding: '2px 8px' }}>{recordError}</div>

@@ -3129,16 +3129,19 @@ html[data-theme="dark"] .connection-steps {
 }
 
 .dm-input {
-  display: flex;
-  gap: 8px;
   padding: 8px 16px 12px;
   background: var(--bg-primary);
-  align-items: flex-end;
 }
 
-.dm-input input {
-  flex: 1;
-  padding: 9px 14px;
+.dm-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.dm-input-wrap input {
+  width: 100%;
+  padding: 9px 44px 9px 14px;
   background: var(--bg-primary);
   border: 1px solid var(--border);
   color: var(--text-primary);
@@ -3150,95 +3153,21 @@ html[data-theme="dark"] .connection-steps {
   line-height: 1.4;
 }
 
-.dm-input input:focus {
+.dm-input-wrap input:focus {
   border-color: var(--accent-blue);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-.dm-input input::placeholder {
+.dm-input-wrap input::placeholder {
   color: var(--text-muted);
 }
 
-.dm-input button {
-  padding: 9px 20px;
-  background: var(--accent-blue);
-  border: none;
-  color: #ffffff;
-  font-family: inherit;
-  font-weight: 600;
-  font-size: 13px;
-  cursor: pointer;
-  border-radius: var(--radius-md);
-}
-
-.dm-input button:hover {
-  opacity: 0.9;
-}
-
-/* Unified media button popover */
-.dm-input-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  position: relative;
-}
-
-.media-toggle-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
+/* Blue circle action button — floats inside input */
+.dm-action-btn {
+  position: absolute;
+  right: 6px;
   width: 28px;
   height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-size: 16px;
-  transition: background 0.15s, color 0.15s;
-  flex-shrink: 0;
-}
-
-.media-toggle-btn:hover {
-  background: rgba(255,255,255,0.1);
-  color: var(--text-primary);
-}
-
-.media-menu {
-  position: absolute;
-  bottom: 100%;
-  right: 0;
-  margin-bottom: 6px;
-  display: flex;
-  gap: 4px;
-  padding: 6px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-  z-index: 10;
-}
-
-.media-menu-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 6px 10px;
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-size: 13px;
-  white-space: nowrap;
-}
-
-.media-menu-btn:hover {
-  background: rgba(255,255,255,0.1);
-  color: var(--text-primary);
-}
-
-/* Video call button — blue circle with AI icon */
-.video-call-btn {
-  width: 32px;
-  height: 32px;
   border-radius: 50%;
   background: var(--accent-blue);
   border: none;
@@ -3248,19 +3177,51 @@ html[data-theme="dark"] .connection-steps {
   justify-content: center;
   transition: transform 0.15s, box-shadow 0.15s;
   flex-shrink: 0;
+  padding: 0;
 }
 
-.video-call-btn:hover {
+.dm-action-btn:hover {
   transform: scale(1.1);
   box-shadow: 0 0 12px rgba(75,131,219,0.5);
 }
 
-.video-call-btn svg {
-  width: 18px;
-  height: 18px;
+.dm-action-btn svg {
+  width: 16px;
+  height: 16px;
   stroke: #fff;
   fill: none;
   stroke-width: 1.5;
+}
+
+/* Emoji action menu — pops above the button */
+.dm-action-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  display: flex;
+  gap: 2px;
+  padding: 4px 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  z-index: 10;
+}
+
+.dm-action-menu-item {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 18px;
+  line-height: 1;
+  transition: transform 0.1s;
+}
+
+.dm-action-menu-item:hover {
+  transform: scale(1.2);
+  background: rgba(255,255,255,0.08);
 }
 
 /* Video call overlay */

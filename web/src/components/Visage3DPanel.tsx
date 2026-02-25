@@ -96,6 +96,7 @@ export function Visage3DPanel({ agent, messages, modelUrl, onFallback }: Visage3
   const disposedRef = useRef(false);
 
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [loadProgress, setLoadProgress] = useState(0);
   const [morphCount, setMorphCount] = useState(0);
 
   const emotionState = useEmotionStream(messages, agent.id);
@@ -223,8 +224,13 @@ export function Visage3DPanel({ agent, messages, modelUrl, onFallback }: Visage3
         }
 
         setStatus('ready');
+        setLoadProgress(100);
       },
-      undefined,
+      (event) => {
+        if (event.total > 0) {
+          setLoadProgress(Math.round((event.loaded / event.total) * 100));
+        }
+      },
       (err) => {
         console.warn('Visage3DPanel: model load failed', err);
         setStatus('error');
@@ -318,13 +324,31 @@ export function Visage3DPanel({ agent, messages, modelUrl, onFallback }: Visage3
             position: 'absolute',
             inset: 0,
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#555',
+            gap: 8,
+            color: '#888',
             fontFamily: 'monospace',
             fontSize: '11px',
           }}>
-            loading 3d model...
+            <span>loading model… {loadProgress > 0 ? `${loadProgress}%` : ''}</span>
+            <div style={{
+              width: '60%',
+              maxWidth: 200,
+              height: 4,
+              background: '#333',
+              borderRadius: 2,
+              overflow: 'hidden',
+            }}>
+              <div style={{
+                width: `${loadProgress}%`,
+                height: '100%',
+                background: 'var(--accent-blue, #5b9cf6)',
+                borderRadius: 2,
+                transition: 'width 0.2s ease',
+              }} />
+            </div>
           </div>
         )}
       </div>
