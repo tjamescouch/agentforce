@@ -5,6 +5,7 @@ dist/
 .env
 .env.local
 server/public/assets/
+server/public/models/
 
 # Sensitive directories - NEVER commit
 .claude/

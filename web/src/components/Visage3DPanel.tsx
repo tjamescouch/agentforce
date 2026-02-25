@@ -175,7 +175,7 @@ export function Visage3DPanel({ agent, messages, modelUrl, onFallback }: Visage3
     ro.observe(container);
     onResize();
 
-    const url = modelUrl || 'https://github.com/tjamescouch/personas/raw/refs/heads/main/ellie/ellie_animation.glb';
+    const url = modelUrl || '/models/ellie_animation.glb';
     const loader = new GLTFLoader();
 
     loader.load(

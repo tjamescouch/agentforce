@@ -120,7 +120,7 @@ export function VideoCallWindow({ agent, onClose }: VideoCallWindowProps) {
               <Visage3DPanel
                 agent={agent}
                 messages={channelMessages}
-                modelUrl="https://github.com/tjamescouch/personas/raw/refs/heads/main/ellie/ellie_animation.glb"
+                modelUrl="/models/ellie_animation.glb"
               />
             </Suspense>
           </div>
