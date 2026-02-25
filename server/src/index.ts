@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express, { Request, Response, NextFunction, Router } from 'express';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import multer from 'multer';
@@ -1931,6 +1931,109 @@ app.use('/api/files', apiAuth, (req: Request, res: Response, next: NextFunction)
     return res.status(503).json({ error: 'FileStore initializing, try again shortly' });
   }
   fileStoreRouter(req, res, next);
+});
+
+// ============ Pinned Model Proxy ============
+// Serves persona 3D assets with SHA-256 integrity verification.
+// Only whitelisted files with matching checksums are ever served.
+// Upstream source is the personas server; verified files are cached to disk.
+
+const PERSONAS_UPSTREAM = process.env.PERSONAS_UPSTREAM || 'http://localhost:3100';
+const MODEL_CACHE_DIR = path.resolve('cache', 'models');
+
+interface PinnedModel {
+  sha256: string;
+  upstreamPath: string;
+  contentType: string;
+}
+
+const PINNED_MODELS: Record<string, PinnedModel> = {
+  'ellie_animation.glb': {
+    sha256: '1b6843a7b9e08a6f70840cc47d1f2dcb31bdbec1ec1ab045d2e2329ef42c5828',
+    upstreamPath: '/ellie/ellie_animation.glb',
+    contentType: 'model/gltf-binary',
+  },
+};
+
+// Track which files have been verified this session (avoid re-hashing 74MB on every request)
+const verifiedModelCache = new Set<string>();
+
+function verifyFileHash(filePath: string, expectedHash: string): boolean {
+  const hash = crypto.createHash('sha256');
+  const data = readFileSync(filePath);
+  hash.update(data);
+  return hash.digest('hex') === expectedHash;
+}
+
+app.get('/models/:filename', async (req: Request, res: Response) => {
+  const { filename } = req.params;
+  const pinned = PINNED_MODELS[filename];
+
+  if (!pinned) {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
+  // Ensure cache directory exists
+  if (!existsSync(MODEL_CACHE_DIR)) {
+    mkdirSync(MODEL_CACHE_DIR, { recursive: true });
+  }
+
+  const cachePath = path.join(MODEL_CACHE_DIR, filename);
+
+  // Serve from cache if available
+  if (existsSync(cachePath)) {
+    // Verify integrity once per server session, then trust the cached file
+    if (verifiedModelCache.has(filename)) {
+      res.setHeader('Content-Type', pinned.contentType);
+      res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+      res.setHeader('X-Content-Integrity', `sha256-${pinned.sha256}`);
+      return res.sendFile(cachePath);
+    }
+    if (verifyFileHash(cachePath, pinned.sha256)) {
+      verifiedModelCache.add(filename);
+      res.setHeader('Content-Type', pinned.contentType);
+      res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+      res.setHeader('X-Content-Integrity', `sha256-${pinned.sha256}`);
+      return res.sendFile(cachePath);
+    }
+    // Cache is corrupted — delete and re-fetch
+    console.warn(`[models] Cache integrity failed for ${filename}, re-fetching`);
+    try { unlinkSync(cachePath); } catch {}
+  }
+
+  // Fetch from upstream personas server
+  const upstreamUrl = `${PERSONAS_UPSTREAM}${pinned.upstreamPath}`;
+  console.log(`[models] Fetching ${filename} from ${upstreamUrl}`);
+
+  try {
+    const upstream = await fetch(upstreamUrl);
+    if (!upstream.ok) {
+      console.error(`[models] Upstream returned ${upstream.status} for ${filename}`);
+      return res.status(502).json({ error: 'Upstream fetch failed' });
+    }
+
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+
+    // Verify integrity BEFORE writing to disk or serving
+    const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+    if (hash !== pinned.sha256) {
+      console.error(`[models] INTEGRITY FAILURE for ${filename}: expected ${pinned.sha256}, got ${hash}`);
+      return res.status(403).json({ error: 'Integrity check failed' });
+    }
+
+    // Cache verified file to disk
+    writeFileSync(cachePath, buffer);
+    verifiedModelCache.add(filename);
+    console.log(`[models] Cached verified ${filename} (${(buffer.length / 1024 / 1024).toFixed(1)} MB)`);
+
+    res.setHeader('Content-Type', pinned.contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+    res.setHeader('X-Content-Integrity', `sha256-${pinned.sha256}`);
+    return res.send(buffer);
+  } catch (err) {
+    console.error(`[models] Failed to fetch ${filename}:`, err);
+    return res.status(502).json({ error: 'Upstream unreachable' });
+  }
 });
 
 // Static files (for built React app)

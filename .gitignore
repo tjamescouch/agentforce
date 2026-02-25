@@ -28,6 +28,9 @@ node_modules/
 dist/
 build/
 
+# Model cache (fetched from upstream)
+cache/
+
 # Logs
 *.log
 logs/

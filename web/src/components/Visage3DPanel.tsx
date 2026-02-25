@@ -107,8 +107,6 @@ export function Visage3DPanel({ agent, messages, modelUrl, onFallback }: Visage3
     }
   }, [emotionState]);
 
-  const defaultModelUrl = 'https://raw.githubusercontent.com/tjamescouch/personas/main/ellie/ellie_animation.glb';
-
   // Init Three.js scene
   useEffect(() => {
     const container = containerRef.current;
@@ -176,8 +174,8 @@ export function Visage3DPanel({ agent, messages, modelUrl, onFallback }: Visage3
     ro.observe(container);
     onResize();
 
-    // Load model
-    const url = '/models/ellie_animation.glb';//modelUrl || defaultModelUrl;
+    // Load model — served via pinned proxy at /models/
+    const url = modelUrl || '/models/ellie_animation.glb';
     const loader = new GLTFLoader();
 
     loader.load(
