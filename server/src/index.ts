@@ -1757,7 +1757,7 @@ app.use((_req: Request, res: Response, next: NextFunction) => {
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'X-XSS-Protection': '0',
-    'Content-Security-Policy': "default-src 'self'; connect-src 'self' wss: ws:; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com"
+    'Content-Security-Policy': "default-src 'self'; connect-src 'self' wss: ws: https://github.com https://raw.githubusercontent.com https://objects.githubusercontent.com; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com"
   });
   next();
 });
