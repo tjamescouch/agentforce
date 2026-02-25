@@ -497,6 +497,9 @@ function generateEphemeralIdentity(prefix = 'visitor'): Identity {
 
 // ============ State Store ============
 
+/** Channels that returned errors (NOT_FOUND, AUTH_REQUIRED) — skip on auto-join */
+const observerBadChannels = new Set<string>(["#ops"]);
+
 const state = {
   agents: new Map<string, AgentState>(),
   channels: new Map<string, ChannelState>(),
@@ -655,10 +658,8 @@ function handleAgentChatMessage(msg: AgentChatMsg): void {
             agentCount: ch.agents || 0,
             messages: new CircularBuffer(200)
           });
-          // Auto-join newly discovered channels — skip known restricted channels
-          // to avoid AUTH_REQUIRED errors that break dashboard rendering
-          const restricted = new Set(["#ops"]);
-          if (!restricted.has(ch.name)) {
+          // Auto-join newly discovered channels — skip known bad/restricted channels
+          if (!observerBadChannels.has(ch.name)) {
             send({ type: "JOIN", channel: ch.name });
           }
         } else {
@@ -785,6 +786,13 @@ function handleAgentChatMessage(msg: AgentChatMsg): void {
 
     case 'ERROR':
       console.error('AgentChat error:', msg.code, msg.message);
+      if ((msg.code === 'CHANNEL_NOT_FOUND' || msg.code === 'AUTH_REQUIRED') && msg.message) {
+        const match = (msg.message as string).match(/#[\w-]+/);
+        if (match) {
+          observerBadChannels.add(match[0]);
+          console.log(`Observer: added ${match[0]} to bad-channel list (will skip on auto-join)`);
+        }
+      }
       break;
 
     case 'TYPING':
