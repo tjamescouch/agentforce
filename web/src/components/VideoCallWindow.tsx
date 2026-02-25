@@ -121,6 +121,7 @@ export function VideoCallWindow({ agent, onClose }: VideoCallWindowProps) {
                 agent={agent}
                 messages={channelMessages}
                 modelUrl="/models/ellie_animation.glb"
+                fillContainer
               />
             </Suspense>
           </div>
@@ -139,15 +140,15 @@ export function VideoCallWindow({ agent, onClose }: VideoCallWindowProps) {
               <div ref={messagesEndRef} />
             </div>
             <div className="dm-input">
-              <input
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleSend(); }}
-                placeholder="Type a message..."
-                autoFocus
-                style={{ flex: 1 }}
-              />
-              <button onClick={handleSend}>Send</button>
+              <div className="dm-input-wrap">
+                <input
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleSend(); }}
+                  placeholder="Type a message..."
+                  autoFocus
+                />
+              </div>
             </div>
           </div>
         </div>

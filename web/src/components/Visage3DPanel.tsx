@@ -13,6 +13,8 @@ interface Visage3DPanelProps {
   messages: Message[];
   modelUrl?: string;
   onFallback?: () => void;
+  /** Fill the parent container instead of using a fixed square aspect ratio */
+  fillContainer?: boolean;
 }
 
 /**
@@ -79,7 +81,7 @@ function mocapToMorphTargets(pts: MocapPts): Record<string, number> {
  * Visage3DPanel — Three.js GLB avatar renderer with emotion-driven morph targets.
  * Drop-in replacement for the 2D VisagePanel canvas renderer.
  */
-export function Visage3DPanel({ agent, messages, modelUrl, onFallback }: Visage3DPanelProps) {
+export function Visage3DPanel({ agent, messages, modelUrl, onFallback, fillContainer }: Visage3DPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -145,16 +147,22 @@ export function Visage3DPanel({ agent, messages, modelUrl, onFallback }: Visage3
     rim.position.set(0, 2, -3);
     scene.add(rim);
 
-    // Camera — close-up for face
+    // Camera
     const rect = container.getBoundingClientRect();
     const aspect = rect.width / (rect.height || 1);
-    const camera = new THREE.PerspectiveCamera(25, aspect, 0.1, 100);
-    camera.position.set(0, 1.55, 1.2);
+    const fov = fillContainer ? 30 : 25;
+    const camera = new THREE.PerspectiveCamera(fov, aspect, 0.1, 100);
+    // Pull back for wide viewports, close-up for square panels
+    if (fillContainer) {
+      camera.position.set(0, 1.45, 2.2);
+    } else {
+      camera.position.set(0, 1.55, 1.2);
+    }
     cameraRef.current = camera;
 
     // Controls
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(0, 1.45, 0);
+    controls.target.set(0, fillContainer ? 1.35 : 1.45, 0);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.minDistance = 0.5;
@@ -306,14 +314,16 @@ export function Visage3DPanel({ agent, messages, modelUrl, onFallback }: Visage3
     : 'neutral';
 
   return (
-    <div className="visage-panel">
+    <div className="visage-panel" style={fillContainer ? { width: '100%', height: '100%' } : undefined}>
       <div
         ref={containerRef}
         className="visage-3d-container"
         style={{
           width: '100%',
-          aspectRatio: '1',
-          borderRadius: '4px',
+          ...(fillContainer
+            ? { height: '100%' }
+            : { aspectRatio: '1' }),
+          borderRadius: fillContainer ? 0 : '4px',
           overflow: 'hidden',
           background: '#111',
           position: 'relative',
@@ -352,21 +362,23 @@ export function Visage3DPanel({ agent, messages, modelUrl, onFallback }: Visage3
           </div>
         )}
       </div>
-      <div className="visage-emotion-label" style={{
-        fontSize: '11px',
-        color: '#888',
-        marginTop: '4px',
-        fontFamily: 'monospace',
-        textAlign: 'center',
-      }}>
-        {status === 'ready' && morphCount > 0
-          ? `3D · ${morphCount} morphs · ${emotionLabel}`
-          : status === 'ready'
-          ? `3D · ${emotionLabel}`
-          : status === 'error'
-          ? '3D load failed'
-          : 'loading...'}
-      </div>
+      {!fillContainer && (
+        <div className="visage-emotion-label" style={{
+          fontSize: '11px',
+          color: '#888',
+          marginTop: '4px',
+          fontFamily: 'monospace',
+          textAlign: 'center',
+        }}>
+          {status === 'ready' && morphCount > 0
+            ? `3D · ${morphCount} morphs · ${emotionLabel}`
+            : status === 'ready'
+            ? `3D · ${emotionLabel}`
+            : status === 'error'
+            ? '3D load failed'
+            : 'loading...'}
+        </div>
+      )}
     </div>
   );
 }
