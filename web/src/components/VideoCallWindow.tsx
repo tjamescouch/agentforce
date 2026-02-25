@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useContext, useCallback, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
-import type { Agent, MessageAttachment } from '../types';
+import type { Agent } from '../types';
 import { DashboardContext } from '../context';
 import { getStoredIdentity } from '../identity';
 import { sodiumReady, deriveSharedSecret, encrypt, toBase64 } from '../crypto';
@@ -120,6 +120,7 @@ export function VideoCallWindow({ agent, onClose }: VideoCallWindowProps) {
               <Visage3DPanel
                 agent={agent}
                 messages={channelMessages}
+                modelUrl="https://github.com/tjamescouch/personas/raw/refs/heads/main/ellie/ellie_animation.glb"
               />
             </Suspense>
           </div>
@@ -133,21 +134,6 @@ export function VideoCallWindow({ agent, onClose }: VideoCallWindowProps) {
                   <span className="dm-msg-time">{formatTime(msg.ts)}</span>
                   <span className="dm-msg-from">{getNick(msg.from)}</span>
                   <span>{msg.content}</span>
-                  {(msg as any).attachments?.map((att: MessageAttachment, ai: number) => (
-                    <span key={ai} className="dm-attachment">
-                      {att.type === 'image' && (
-                        <img
-                          src={att.dataUrl}
-                          alt={att.name || 'image'}
-                          className="dm-attachment-image"
-                          style={{ maxWidth: 240, maxHeight: 180, borderRadius: 4, display: 'block', marginTop: 4 }}
-                        />
-                      )}
-                      {att.type === 'audio' && (
-                        <audio controls src={att.dataUrl} style={{ marginTop: 4, display: 'block' }} />
-                      )}
-                    </span>
-                  ))}
                 </div>
               ))}
               <div ref={messagesEndRef} />
