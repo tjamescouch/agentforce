@@ -136,6 +136,12 @@ interface DashboardClient {
   agentChatPingInterval: ReturnType<typeof setInterval> | null;
   pendingMessages: Array<{ type: string; to: string; content: string; sig: string | null }>;
   _reconnectBackoff: number;
+  /** Channels that returned CHANNEL_NOT_FOUND — skip on reconnect */
+  _badChannels: Set<string>;
+  /** Number of consecutive reconnect attempts in the current failure run */
+  _reconnectCount: number;
+  /** Timestamp when the current failure run started */
+  _reconnectSince: number;
 }
 
 interface AgentChatMsg {
@@ -914,8 +920,10 @@ function connectClientToAgentChat(client: DashboardClient, preferredNick?: strin
       }
     }, 15000); // Reduced from 25s to 15s to prevent server/LB timeout disconnects
 
-    // Reset backoff on successful connection
+    // Reset backoff and reconnect counter on successful connection
     client._reconnectBackoff = 2000;
+    client._reconnectCount = 0;
+    client._reconnectSince = 0;
   });
 
   ws.on('message', (data) => {
@@ -937,11 +945,29 @@ function connectClientToAgentChat(client: DashboardClient, preferredNick?: strin
     if (client.agentChatWs === ws && client.ws.readyState === WebSocket.OPEN) {
       client.agentChatWs = null;
       client.agentId = null;
+      // Track consecutive reconnect attempts to detect runaway loops
+      const MAX_RECONNECTS = 10;
+      const RECONNECT_WINDOW_MS = 60000;
+      const now = Date.now();
+      if (now - client._reconnectSince > RECONNECT_WINDOW_MS) {
+        // New failure run — reset counter
+        client._reconnectCount = 0;
+        client._reconnectSince = now;
+      }
+      client._reconnectCount++;
+      if (client._reconnectCount > MAX_RECONNECTS) {
+        console.warn(`Per-session ${client.id}: exceeded max reconnects (${MAX_RECONNECTS}) in 60s — giving up`);
+        client.ws.send(JSON.stringify({
+          type: 'error',
+          data: { code: 'SESSION_RECONNECT_FAILED', message: `Failed to reconnect after ${MAX_RECONNECTS} attempts. Please reload.` }
+        }));
+        return;
+      }
       // Exponential backoff: 2s, 4s, 8s, 16s, max 30s
       const backoff = client._reconnectBackoff || 2000;
       const nextBackoff = Math.min(backoff * 2, 30000);
       client._reconnectBackoff = nextBackoff;
-      console.log(`Auto-reconnecting per-session connection for ${client.id} in ${backoff / 1000}s...`);
+      console.log(`Auto-reconnecting per-session connection for ${client.id} in ${backoff / 1000}s (attempt ${client._reconnectCount}/${MAX_RECONNECTS})...`);
       client.ws.send(JSON.stringify({
         type: 'error',
         data: { code: 'SESSION_RECONNECTING', message: 'AgentChat connection lost, reconnecting...' }
@@ -983,14 +1009,16 @@ function handlePerSessionMessage(client: DashboardClient, msg: AgentChatMsg): vo
           }
         }));
       }
-      // Join channels the observer is already in (skip restricted channels)
+      // Join channels the observer is already in (skip restricted or previously bad channels)
       const restrictedChannels = new Set(["#ops"]);
       for (const channelName of state.channels.keys()) {
-        if (!restrictedChannels.has(channelName)) {
+        if (!restrictedChannels.has(channelName) && !client._badChannels.has(channelName)) {
           client.agentChatWs?.send(JSON.stringify({
             type: "JOIN",
             channel: channelName
           }));
+        } else if (client._badChannels.has(channelName)) {
+          console.log(`Per-session ${client.id}: skipping bad channel ${channelName} on reconnect`);
         }
       }
       break;
@@ -1071,6 +1099,20 @@ function handlePerSessionMessage(client: DashboardClient, msg: AgentChatMsg): vo
 
     case 'ERROR':
       console.error(`Per-session error for ${client.id}:`, msg.code, msg.message);
+      // Track channels that do not exist so we skip them on reconnect and avoid
+      // the join-error-reconnect-join loop that hammers the server.
+      if (msg.code === 'CHANNEL_NOT_FOUND' && msg.message) {
+        const match = msg.message.match(/#[\w-]+/);
+        if (match) {
+          const badCh = match[0];
+          client._badChannels.add(badCh);
+          console.log(`Per-session ${client.id}: added ${badCh} to bad-channel list (will skip on reconnect)`);
+          // Notify browser to persist this in localStorage so it survives server restarts.
+          if (client.ws.readyState === WebSocket.OPEN) {
+            client.ws.send(JSON.stringify({ type: 'bad_channel', data: { channel: badCh } }));
+          }
+        }
+      }
       if (client.ws.readyState === WebSocket.OPEN) {
         client.ws.send(JSON.stringify({
           type: 'error',
@@ -1286,8 +1328,10 @@ function reconnectClientToAgentChat(client: DashboardClient): void {
       }
     }, 15000); // Match initial connection ping interval
 
-    // Reset backoff on successful reconnection
+    // Reset backoff and reconnect counter on successful reconnection
     client._reconnectBackoff = 2000;
+    client._reconnectCount = 0;
+    client._reconnectSince = 0;
   });
 
   ws.on('message', (data) => {
@@ -1308,11 +1352,28 @@ function reconnectClientToAgentChat(client: DashboardClient): void {
     if (client.agentChatWs === ws && client.ws.readyState === WebSocket.OPEN) {
       client.agentChatWs = null;
       client.agentId = null;
+      // Track consecutive reconnect attempts to detect runaway loops
+      const MAX_RECONNECTS = 10;
+      const RECONNECT_WINDOW_MS = 60000;
+      const now = Date.now();
+      if (now - client._reconnectSince > RECONNECT_WINDOW_MS) {
+        client._reconnectCount = 0;
+        client._reconnectSince = now;
+      }
+      client._reconnectCount++;
+      if (client._reconnectCount > MAX_RECONNECTS) {
+        console.warn(`Per-session ${client.id}: exceeded max reconnects (${MAX_RECONNECTS}) in 60s — giving up`);
+        client.ws.send(JSON.stringify({
+          type: 'error',
+          data: { code: 'SESSION_RECONNECT_FAILED', message: `Failed to reconnect after ${MAX_RECONNECTS} attempts. Please reload.` }
+        }));
+        return;
+      }
       // Exponential backoff: 2s, 4s, 8s, 16s, max 30s
       const backoff = client._reconnectBackoff || 2000;
       const nextBackoff = Math.min(backoff * 2, 30000);
       client._reconnectBackoff = nextBackoff;
-      console.log(`Auto-reconnecting per-session connection for ${client.id} in ${backoff / 1000}s...`);
+      console.log(`Auto-reconnecting per-session connection for ${client.id} in ${backoff / 1000}s (attempt ${client._reconnectCount}/${MAX_RECONNECTS})...`);
       client.ws.send(JSON.stringify({
         type: 'error',
         data: { code: 'SESSION_RECONNECTING', message: 'AgentChat connection lost, reconnecting...' }
@@ -1493,6 +1554,21 @@ function handleDashboardMessage(client: DashboardClient, msg: DashboardMessage):
       }
       client.mode = newMode;
       client.ws.send(JSON.stringify({ type: 'mode_changed', data: { mode: client.mode } }));
+      break;
+    }
+
+    case 'restore_bad_channels': {
+      // Browser sends previously persisted bad channels on reconnect so the server
+      // skips them in the WELCOME join loop even after a server restart.
+      const { channels: badList } = msg.data as { channels: string[] };
+      if (Array.isArray(badList)) {
+        for (const ch of badList) {
+          if (typeof ch === 'string' && ch.startsWith('#')) {
+            client._badChannels.add(ch);
+          }
+        }
+        console.log(`Per-session ${client.id}: restored ${badList.length} bad channel(s) from browser localStorage`);
+      }
       break;
     }
 
@@ -1907,6 +1983,9 @@ wss.on('connection', (ws, req) => {
     agentChatPingInterval: null,
     pendingMessages: [],
     _reconnectBackoff: 2000,
+    _badChannels: new Set<string>(),
+    _reconnectCount: 0,
+    _reconnectSince: 0,
   };
   dashboardClients.add(client);
   console.log(`Dashboard client connected: ${client.id} from ${ip}`);
