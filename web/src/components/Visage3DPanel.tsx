@@ -412,33 +412,32 @@ function createMaterial(category: string): THREE.MeshStandardMaterial {
   }
 }
 
-// ── Avatar clip categorization ──
+// ── Avatar clip auto-classification ──
+// Inspect each clip's tracks at load time to determine playback strategy:
+// - morph_only: has only morphTargetInfluences tracks → blended simultaneously
+// - full_body: has bone tracks (position/quaternion/scale) → crossfade exclusively
 
-const MORPH_ONLY_CLIPS = new Set([
-  // Face expressions
-  'Ellie face default', 'Ellie face excited', 'Ellie face awkward',
-  'Ellie face scared', 'Ellie face scared2', 'Ellie face annoyed',
-  'Ellie face suspicious', 'Ellie face squint', 'Ellie face wissle',
-  // Eye masks
-  'Ellie eyemask angry', 'Ellie eyemask closed', 'Ellie eyemask concerned',
-  'Ellie eyemask content', 'Ellie eyemask relaxed', 'Ellie eyemask squint',
-  'Ellie eymask scared',
-  // Mouth
-  'Ellie Mouth Aa', 'Ellie mouth Ee', 'Ellie mouth Eh',
-  'Ellie mouth Oo', 'Ellie mouth Uu', 'Ellie mouth squeeze',
-  'Ellie mouth smileclosed', 'Ellie mouth smileclosed2', 'Ellie mouth smileopen',
-  // Rig controls
-  'RIG.Ellie_Eyelid_Upper_Close-Open', 'RIG.Ellie_Eyebrows_Down',
-  'RIG.Ellie_Eyelid_Lower_Close-Open',
-]);
+type ClipType = 'idle' | 'morph_only' | 'full_body';
 
-const FULL_BODY_CLIPS = new Set([
-  'Ellie full angry', 'Ellie full cheerful', 'Ellie full relaxed',
-  'Ellie full scared', 'Ellie full waving',
-]);
+function classifyClip(clip: THREE.AnimationClip): ClipType {
+  if (clip.name.toLowerCase().includes('idle')) return 'idle';
 
-// All clips the animation system should prepare actions for
-const ALL_AVATAR_CLIPS = new Set([...MORPH_ONLY_CLIPS, ...FULL_BODY_CLIPS]);
+  let hasBoneTracks = false;
+  let hasMorphTracks = false;
+
+  for (const track of clip.tracks) {
+    const prop = track.name.split('.').pop();
+    if (prop === 'morphTargetInfluences') {
+      hasMorphTracks = true;
+    } else if (prop === 'position' || prop === 'quaternion' || prop === 'scale') {
+      hasBoneTracks = true;
+    }
+  }
+
+  if (hasBoneTracks) return 'full_body';
+  if (hasMorphTracks) return 'morph_only';
+  return 'morph_only'; // fallback
+}
 
 // Sigmoid smoothstep for natural transitions
 function sigmoid(t: number): number {
@@ -482,6 +481,7 @@ export function Visage3DPanel({ agent, messages, modelUrl, onFallback, fillConta
   const disposedRef = useRef(false);
 
   // Avatar clip animation refs
+  const clipTypeMapRef = useRef<Record<string, ClipType>>({});
   const clipActionsRef = useRef<Record<string, THREE.AnimationAction>>({});
   const clipTargetWeightsRef = useRef<Record<string, number>>({});
   const clipsByNameRef = useRef<Record<string, THREE.AnimationClip>>({});
@@ -636,13 +636,18 @@ export function Visage3DPanel({ agent, messages, modelUrl, onFallback, fillConta
         if (gltf.animations.length > 0) {
           const mixer = new THREE.AnimationMixer(gltf.scene);
 
-          // Index all clips by name
+          // Index all clips by name and auto-classify
           const clipsByName: Record<string, THREE.AnimationClip> = {};
-          for (const clip of gltf.animations) clipsByName[clip.name] = clip;
+          const typeMap: Record<string, ClipType> = {};
+          for (const clip of gltf.animations) {
+            clipsByName[clip.name] = clip;
+            typeMap[clip.name] = classifyClip(clip);
+          }
           clipsByNameRef.current = clipsByName;
+          clipTypeMapRef.current = typeMap;
 
           // Find and play idle animation
-          const idleClip = gltf.animations.find(c => c.name === 'ANI-ellie.idle');
+          const idleClip = gltf.animations.find(c => typeMap[c.name] === 'idle');
           if (idleClip) {
             const action = mixer.clipAction(idleClip);
             action.setEffectiveWeight(1.0);
@@ -658,8 +663,7 @@ export function Visage3DPanel({ agent, messages, modelUrl, onFallback, fillConta
           // Prepare morph-only clip actions (strip bone tracks, keep morphTargetInfluences)
           const actions: Record<string, THREE.AnimationAction> = {};
           for (const [name, clip] of Object.entries(clipsByName)) {
-            if (name === 'ANI-ellie.idle') continue;
-            if (!MORPH_ONLY_CLIPS.has(name)) continue;
+            if (typeMap[name] !== 'morph_only') continue;
 
             const safeClip = clip.clone();
             safeClip.tracks = safeClip.tracks.filter((track) => {
@@ -721,7 +725,7 @@ export function Visage3DPanel({ agent, messages, modelUrl, onFallback, fillConta
       const poseClips: Record<string, number> = {};
 
       for (const [name, weight] of Object.entries(clips)) {
-        if (!FULL_BODY_CLIPS.has(name)) continue;
+        if (clipTypeMapRef.current[name] !== 'full_body') continue;
         const clip = clipsByName[name];
         if (!clip) continue;
         const action = mixer.clipAction(clip);
@@ -854,10 +858,11 @@ export function Visage3DPanel({ agent, messages, modelUrl, onFallback, fillConta
         // Separate morph-only vs full-body clips
         const morphClips: Record<string, number> = {};
         const bodyClips: Record<string, number> = {};
+        const types = clipTypeMapRef.current;
         for (const [name, weight] of Object.entries(cmd.clips)) {
-          if (MORPH_ONLY_CLIPS.has(name)) {
+          if (types[name] === 'morph_only') {
             morphClips[name] = weight;
-          } else if (FULL_BODY_CLIPS.has(name)) {
+          } else if (types[name] === 'full_body') {
             bodyClips[name] = weight;
           }
         }
