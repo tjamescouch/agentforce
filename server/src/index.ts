@@ -1478,9 +1478,10 @@ function getChannelsSnapshot(): Array<{ name: string; members: string[]; message
   const channels = [...state.channels.values()].map(c => ({
     name: c.name,
     members: [...c.members],
-    messageCount: c.messages.toArray().length
+    messageCount: c.messages.toArray().length,
+    ...(observerBadChannels.has(c.name) && { bad: true }),
   }));
-  // Include bad channels so the dashboard can see them
+  // Include bad channels not in state.channels so the dashboard can see them
   for (const name of observerBadChannels) {
     if (!state.channels.has(name)) {
       channels.push({ name, members: [], messageCount: 0, bad: true });
