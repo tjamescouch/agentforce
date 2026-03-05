@@ -33,6 +33,7 @@ export interface Channel {
   members: string[];
   messageCount: number;
   agentCount?: number;
+  bad?: boolean;
 }
 
 export interface Message {

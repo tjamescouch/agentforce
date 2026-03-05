@@ -79,7 +79,7 @@ export function Sidebar({ state, dispatch, sidebarWidth }: SidebarProps) {
               className={`list-item ${state.selectedChannel === channel.name ? 'selected' : ''}`}
               onClick={() => dispatch({ type: 'SELECT_CHANNEL', channel: channel.name })}
             >
-              <span className="channel-name">{channel.name}</span>
+              <span className="channel-name">{channel.bad ? '\u26a0\ufe0f ' : ''}{channel.name}</span>
               {state.activityCounts[channel.name] > 0 && (
                 <span className="activity-badge" title="Join/leave activity">{state.activityCounts[channel.name]}</span>
               )}

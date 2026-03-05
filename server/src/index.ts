@@ -1466,11 +1466,7 @@ function getStateSnapshot(): Record<string, unknown> {
       }
       return { ...a, channels: [...a.channels], publicKey };
     }),
-    channels: [...state.channels.values()].map(c => ({
-      name: c.name,
-      members: [...c.members],
-      messageCount: c.messages.toArray().length
-    })),
+    channels: getChannelsSnapshot(),
     messages: Object.fromEntries(
       [...state.channels.entries()].map(([name, ch]) => [name, ch.messages.toArray()])
     ),
@@ -1478,12 +1474,19 @@ function getStateSnapshot(): Record<string, unknown> {
   };
 }
 
-function getChannelsSnapshot(): Array<{ name: string; members: string[]; messageCount: number }> {
-  return [...state.channels.values()].map(c => ({
+function getChannelsSnapshot(): Array<{ name: string; members: string[]; messageCount: number; bad?: boolean }> {
+  const channels = [...state.channels.values()].map(c => ({
     name: c.name,
     members: [...c.members],
     messageCount: c.messages.toArray().length
   }));
+  // Include bad channels so the dashboard can see them
+  for (const name of observerBadChannels) {
+    if (!state.channels.has(name)) {
+      channels.push({ name, members: [], messageCount: 0, bad: true });
+    }
+  }
+  return channels;
 }
 
 function handleDashboardMessage(client: DashboardClient, msg: DashboardMessage): void {
