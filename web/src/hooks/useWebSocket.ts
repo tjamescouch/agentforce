@@ -239,7 +239,7 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled:
             break;
           case 'server_decommissioned':
             dispatch({ type: 'CONNECTION_ERROR', error: msg.data?.message || 'The AgentChat server has been taken down.' });
-            // Close the websocket — no point staying connected
+            shouldReconnect.current = false;
             ws.current?.close();
             break;
           case 'error':
@@ -269,6 +269,9 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled:
           clearInterval(heartbeatTimer);
           heartbeatTimer = null;
         }
+
+        if (!shouldReconnect.current) return;
+
         dispatch({ type: 'DISCONNECTED' });
 
         const scheduleReconnect = () => {
