@@ -576,9 +576,21 @@ function connectToAgentChat(id: Identity): void {
     });
   });
 
+  let decommissioned = false;
+
   agentChatWs.on('message', (data) => {
     try {
       const msg: AgentChatMsg = JSON.parse(data.toString());
+      if (msg.code === 'SERVER_DECOMMISSIONED') {
+        console.warn('AgentChat server is decommissioned:', msg.message);
+        decommissioned = true;
+        state.connected = false;
+        broadcastToDashboards({
+          type: 'server_decommissioned',
+          data: { message: msg.message || 'The AgentChat server has been taken down.' },
+        });
+        return;
+      }
       handleAgentChatMessage(msg);
     } catch (e) {
       console.error('Failed to parse AgentChat message:', e);
@@ -588,6 +600,10 @@ function connectToAgentChat(id: Identity): void {
   agentChatWs.on('close', () => {
     console.log('Disconnected from AgentChat');
     state.connected = false;
+    if (decommissioned) {
+      console.log('Not reconnecting — server is decommissioned.');
+      return;
+    }
     broadcastToDashboards({ type: 'disconnected' });
     scheduleReconnect(id);
   });
@@ -934,9 +950,22 @@ function connectClientToAgentChat(client: DashboardClient, preferredNick?: strin
     client._reconnectSince = 0;
   });
 
+  let sessionDecommissioned = false;
+
   ws.on('message', (data) => {
     try {
       const msg: AgentChatMsg = JSON.parse(data.toString());
+      if (msg.code === 'SERVER_DECOMMISSIONED') {
+        console.warn(`Per-session ${client.id}: server decommissioned`);
+        sessionDecommissioned = true;
+        if (client.ws.readyState === WebSocket.OPEN) {
+          client.ws.send(JSON.stringify({
+            type: 'server_decommissioned',
+            data: { message: msg.message || 'The AgentChat server has been taken down.' },
+          }));
+        }
+        return;
+      }
       handlePerSessionMessage(client, msg);
     } catch (e) {
       console.error(`Per-session message parse error for ${client.id}:`, e);
@@ -948,6 +977,10 @@ function connectClientToAgentChat(client: DashboardClient, preferredNick?: strin
     if (client.agentChatPingInterval) {
       clearInterval(client.agentChatPingInterval);
       client.agentChatPingInterval = null;
+    }
+    if (sessionDecommissioned) {
+      console.log(`Per-session ${client.id}: not reconnecting — server decommissioned`);
+      return;
     }
     // Auto-reconnect if the dashboard client is still connected and was in participate mode
     if (client.agentChatWs === ws && client.ws.readyState === WebSocket.OPEN) {
@@ -1342,9 +1375,22 @@ function reconnectClientToAgentChat(client: DashboardClient): void {
     client._reconnectSince = 0;
   });
 
+  let reconDecommissioned = false;
+
   ws.on('message', (data) => {
     try {
       const msg: AgentChatMsg = JSON.parse(data.toString());
+      if (msg.code === 'SERVER_DECOMMISSIONED') {
+        console.warn(`Per-session ${client.id}: server decommissioned (reconnect path)`);
+        reconDecommissioned = true;
+        if (client.ws.readyState === WebSocket.OPEN) {
+          client.ws.send(JSON.stringify({
+            type: 'server_decommissioned',
+            data: { message: msg.message || 'The AgentChat server has been taken down.' },
+          }));
+        }
+        return;
+      }
       handlePerSessionMessage(client, msg);
     } catch (e) {
       console.error(`Per-session message parse error for ${client.id}:`, e);
@@ -1356,6 +1402,10 @@ function reconnectClientToAgentChat(client: DashboardClient): void {
     if (client.agentChatPingInterval) {
       clearInterval(client.agentChatPingInterval);
       client.agentChatPingInterval = null;
+    }
+    if (reconDecommissioned) {
+      console.log(`Per-session ${client.id}: not reconnecting — server decommissioned`);
+      return;
     }
     if (client.agentChatWs === ws && client.ws.readyState === WebSocket.OPEN) {
       client.agentChatWs = null;

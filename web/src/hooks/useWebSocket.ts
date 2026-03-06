@@ -237,6 +237,11 @@ export function useWebSocket(dispatch: React.Dispatch<DashboardAction>, enabled:
           case 'activity':
             dispatch({ type: 'ACTIVITY', data: msg.data });
             break;
+          case 'server_decommissioned':
+            dispatch({ type: 'CONNECTION_ERROR', error: msg.data?.message || 'The AgentChat server has been taken down.' });
+            // Close the websocket — no point staying connected
+            ws.current?.close();
+            break;
           case 'error':
             if (msg.data?.code === 'AUTH_REQUIRED') {
               console.warn('Channel auth required (non-fatal):', msg.data?.message);
